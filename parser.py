@@ -57,7 +57,7 @@ comma = lexme(string(","))
 dot = lexme(string("."))
 turnstile = lexme(string("|-"))
 ident = lexme(regex("[a-zA-Z_](\w|[_%'])*") | string("?")).desc("identifier")
-binop = lexme(alt(*[string(s) for s in ["$", "..", "-->", "--->", "==>", "=", "<=", ">=", "<", ">", "/\\", "\\/", "+", "-", "*", "%%", "%", "IN", "INSERT"]])).desc("binary operator")
+binop = lexme(alt(*[string(s) for s in ["$", "..", "-->", "--->", "==>", "=_c", "=", "<=_c", "<=", ">=", ">=_c", "<_c", "<", ">_c", ">", "/\\", "\\/", "+_c", "+", "-_c", "-", "*_c", "*", "^_c", "^", "%%", "%", "IN", "INSERT"]])).desc("binary operator")
 uop = lexme(string("~") | string("@")).desc("unary operator")
 binder = lexme(alt(*[string(s) for s in ["@", "!", "?!", "?", "\\", "lambda"]])).desc("binder")
 
@@ -65,7 +65,7 @@ binder = lexme(alt(*[string(s) for s in ["@", "!", "?!", "?", "\\", "lambda"]]))
 def expr_atom():
     binop_pap = seq(binop.map(EIdent), expr_uop).combine(EApply)
     tuple = seq(expr, (comma >> expr).many()).combine(lambda e, es: e if len(es)==0 else ETuple([e] + es))
-    unknown = seq(expr_uop, binop.map(EIdent)).combine(lambda e, op: EApply(e, op)) # XXX: 解釈が正しいか不明
+    unknown = seq(expr_uop, (binop | lexme(string(","))).map(EIdent)).combine(lambda e, op: EApply(e, op)) # XXX: 解釈が正しいか不明
     return (yield (ident.map(EIdent) | paren(binop_pap | tuple) | paren(unknown))) # paren(binop_pap | tuple | unknown) とはできないので注意
 
 @generate
