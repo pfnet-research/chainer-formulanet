@@ -6,6 +6,6 @@ features:
 - pip:parsy==1.1.0
 hardware:
 - cpu==2
-- ram==4096
+- ram==8192
 datasets:
 - holstep==1 @ /home/user/holstep
