@@ -57,7 +57,7 @@ comma = lexme(string(","))
 dot = lexme(string("."))
 turnstile = lexme(string("|-"))
 ident = lexme(regex("[a-zA-Z_](\w|[_%'])*") | string("?")).desc("identifier")
-binop = lexme(alt(*[string(s) for s in ["$", "..", "-->", "--->", "==>", "=_c", "=", "<=_c", "<=", ">=", ">=_c", "<_c", "<", ">_c", ">", "/\\", "\\/", "+_c", "+", "-_c", "-", "*_c", "*", "^_c", "^", "%%", "%", "IN", "INSERT"]])).desc("binary operator")
+binop = lexme(alt(*[string(s) for s in ["$", "..", "-->", "--->", "==>", "==", "=_c", "=", "<=_c", "<=", ">=", ">=_c", "<_c", "<", ">_c", ">", "/\\", "\\/", "+_c", "+", "-_c", "-", "*_c", "*", "^_c", "^", "%%", "%", "IN", "INSERT"]])).desc("binary operator")
 uop = lexme(string("~") | string("@")).desc("unary operator")
 binder = lexme(alt(*[string(s) for s in ["@", "!", "?!", "?", "\\", "lambda"]])).desc("binder")
 
