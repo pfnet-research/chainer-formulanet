@@ -9,6 +9,8 @@ module Holstep
   , Thm
   , expr
   , thm
+
+  , fvars
   ) where
 
 import Control.Applicative
@@ -203,3 +205,9 @@ binOps =
   , "-->"
   , "--->"
   ]
+
+
+fvars :: Expr -> Set Ident
+fvars (EIdent x) = Set.singleton x
+fvars (EApply e1 e2) = fvars e1 `Set.union` fvars e2
+fvars (EQuantified _b v e) = Set.delete v (fvars e)
