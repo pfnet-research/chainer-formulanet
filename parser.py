@@ -1,5 +1,5 @@
 import parsy
-from parsy import alt, generate, regex, seq, string
+from parsy import alt, fail, generate, regex, seq, string
 
 class Expr(object):
     pass
@@ -20,13 +20,6 @@ class EApply(Expr):
     def __str__(self):
         return "({} {})".format(str(self.fun), str(self.arg))
 
-class ETuple(Expr):
-    def __init__(self, args):
-        self.args = args
-
-    def __str__(self):
-        return "(" + ", ".join(map(str, self.args)) + ")"
-
 class EQuantified(Expr):
     def __init__(self, binder, var, body):
         self.binder = binder
@@ -36,7 +29,7 @@ class EQuantified(Expr):
     def __str__(self):
         return "({} {}. {})".format(self.binder, self.var, str(self.body))
 
-class Judgement:
+class Thm:
     def __init__(self, premises, conclusion):
         self.premises = tuple(premises)
         self.conclusion = conclusion
@@ -50,50 +43,40 @@ spaces = regex(r'\s*')
 def lexme(p):
     return (p << spaces)
 
-def paren(p):
-    return (lexme(string('(')) >> p << lexme(string(')')))
+ident = lexme(regex(r"([a-zA-Z0-9#@!^~?$'\_%+\-*<>=/\\])+") | string("..") | string(",")).desc("identifier")
 
-comma = lexme(string(","))
+lparen = lexme(string('('))
+
+rparen = lexme(string(')'))
+
 dot = lexme(string("."))
-turnstile = lexme(string("|-"))
-ident = lexme(regex("[a-zA-Z_](\w|[_%'])*") | string("?")).desc("identifier")
-binop = lexme(alt(*[string(s) for s in ["$", "..", "-->", "--->", "==>", "==", "=_c", "=", "<=_c", "<=", ">=", ">=_c", "<_c", "<", ">_c", ">", "/\\", "\\/", "++", "+_c", "+", "-_c", "-", "*_c", "*", "^_c", "^", "%%", "%", "IN", "INSERT", "o"]])).desc("binary operator")
-uop = lexme(string("~") | string("@")).desc("unary operator")
-binder = lexme(alt(*[string(s) for s in ["@", "!", "?!", "?", "\\", "lambda"]])).desc("binder")
+
+bin_ops = frozenset(["<=>", "==>", "\\/", "/\\", "==", "===", "treal_eq", "IN", "<", "<<", "<<<", "<<=", "<=", "<=_c", "<_c", "=", "=_c", ">", ">=", ">=_c", ">_c", "HAS_SIZE", "PSUBSET", "SUBSET", "divides", "has_inf", "has_sup", "treal_le", ",", "..", "+", "++", "UNION", "treal_add", "-", "DIFF", "*", "**", "INTER", "INTERSECTION_OF", "UNION_OF", "treal_mul", "INSERT", "DELETE", "CROSS", "PCROSS", "/", "DIV", "MOD", "div", "rem", "EXP", "pow", "$", "o", "%", "%%", "-->", "--->"])
 
 @generate
-def expr_atom():
-    binop_pap = seq(binop.map(EIdent), expr_uop).combine(EApply)
-    tuple = seq(expr, (comma >> expr).many()).combine(lambda e, es: e if len(es)==0 else ETuple([e] + es))
-    unknown = seq(expr_uop, (binop | lexme(string(","))).map(EIdent)).combine(lambda e, op: EApply(e, op)) # XXX: 解釈が正しいか不明
-    return (yield (ident.map(EIdent) | paren(binop_pap | tuple) | paren(unknown))) # paren(binop_pap | tuple | unknown) とはできないので注意
-
-@generate
-def expr_apply():
-    e = yield expr_atom
-    args = yield expr_atom.many()
-    for arg in args:
-        e = EApply(e, arg)
-    return e
-
-expr_uop = seq(uop.map(EIdent), expr_apply).combine(lambda op, e: EApply(op, e)) | expr_apply
-
-@generate
-def expr_binop():
-    e = yield expr_uop
-    rest = yield seq(binop.map(EIdent), expr_uop).many()
-    for op, e2 in rest:
-        e = EApply(EApply(op, e), e2)
-    return e
-
-@generate
-def expr_quantified():
-    b = yield binder
+def expr_cont_quantified():
+    b = yield lexme(regex(r"@|!|\?!|\?|\\|lambda"))
     v = yield ident
     yield dot
-    body = yield expr
-    return EQuantified(b,v,body)
+    e = yield expr
+    yield rparen
+    return EQuantified(b,v,e)
 
-expr = (expr_quantified | expr_binop)
+@generate
+def binop():
+    op = yield ident
+    if op not in bin_ops:
+        yield fail("{} is not a binary operator".format(op))
+    else:
+        return op
 
-judgement = seq(expr.sep_by(comma), turnstile >> expr).combine(Judgement)
+@generate
+def expr_cont_expr1():
+    e1 = yield expr
+    p1 = seq(binop, expr << rparen).combine(lambda op,e2: EApply(EApply(EIdent(op),e1),e2))
+    p2 = (expr << rparen).map(lambda e2: EApply(e1,e2))
+    return (yield (p1 | p2))
+
+expr = alt(ident.map(EIdent), (lparen >> (expr_cont_quantified | expr_cont_expr1)))
+
+thm = seq(expr.sep_by(lexme(string(","))), lexme(string("|-")) >> expr).combine(Thm)

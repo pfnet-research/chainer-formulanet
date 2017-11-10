@@ -12,7 +12,7 @@ for fname in itertools.chain(("holstep/train/%05d" % i for i in range(1,10000)),
     num_error = 0
     for formula in itertools.chain([file.conjecture], file.dependencies, file.examples):
         try:
-            parser.judgement.parse(formula.text)
+            parser.thm.parse(formula.text)
         except parsy.ParseError as ex:
             print(ex)
             print(formula.text)
