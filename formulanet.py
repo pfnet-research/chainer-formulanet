@@ -74,11 +74,11 @@ class FormulaNet(chainer.Chain):
                 self.FR = Block(3)
             self.classifier = Classifier(conditional)
 
-    def __call__(self, batch):
+    def __call__(self, minibatch):
         loss = 0
-        for (g_conj, g, y) in batch:
+        for (g_conj, g, y) in minibatch:
             loss += self._forward1(g_conj, g, y)
-        self.loss = loss / len(batch)
+        self.loss = loss / len(minibatch)
         reporter.report({'loss': self.loss}, self)
         return self.loss
 
@@ -134,36 +134,83 @@ class FormulaNet(chainer.Chain):
         return self.embed_id(g.labels)
 
     def _update_nodes_embedding(self, g, x):
+        x_new = x
+
+        FI_inputs = []
+        FO_inputs = []
+        FI_offset = 0
+        FO_offset = 0
+        FI_offsets = []
+        FO_offsets = []
+
+        for v in range(len(g.labels)):
+            if len(g.in_edges[v]) > 0:
+                FI_inputs.append( (x[g.in_edges[v],:], F.broadcast_to(x[v], (len(g.in_edges[v]), DIM))) )
+            FI_offsets.append(FI_offset)
+            FI_offset += len(g.in_edges[v])
+
+            if len(g.out_edges[v]) > 0:
+                FO_inputs.append( (F.broadcast_to(x[v], (len(g.out_edges[v]), DIM)), x[g.out_edges[v]]) )
+            FO_offsets.append(FO_offset)
+            FO_offset += len(g.out_edges[v])
+
+        # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
+        FI_outputs = self.FI(*[F.vstack([xs[i] for xs in FI_inputs]) for i in range(2)])
+        FO_outputs = self.FO(*[F.vstack([xs[i] for xs in FO_inputs]) for i in range(2)])
+
         d = []
         for v in range(len(g.labels)):
-            h = self.xp.zeros(DIM, dtype=np.float32)
-            if len(g.in_edges[v]) > 0:
-                h += F.sum(self.FI(x[g.in_edges[v],:], F.broadcast_to(x[v], (len(g.in_edges[v]), DIM))), axis=0)
-            if len(g.out_edges[v]) > 0:
-                h += F.sum(self.FO(F.broadcast_to(x[v], (len(g.out_edges[v]), DIM)), x[g.out_edges[v]]), axis=0)
-            h /= g.degrees[v]
+            h = F.sum(FI_outputs[FI_offsets[v] : FI_offsets[v] + len(g.in_edges[v]),  :], axis=0) + \
+                F.sum(FO_outputs[FO_offsets[v] : FO_offsets[v] + len(g.out_edges[v]), :], axis=0)
+            h /= (len(g.in_edges[v]) + len(g.out_edges[v]))
             d.append(h)
-        x += F.vstack(d)
+        x_new += F.vstack(d)
 
         if self._order_preserving:
+            FL_inputs = []
+            FH_inputs = []
+            FR_inputs = []
+            FL_offset = 0
+            FH_offset = 0
+            FR_offset = 0
+            FL_offsets = []
+            FH_offsets = []
+            FR_offsets = []
+
+            for v in range(len(g.labels)):
+                tbl = g.treeletsL[v]
+                if len(tbl) > 0:
+                    FL_inputs.append( (F.broadcast_to(x[v], (tbl.shape[0], DIM)), x[tbl[:,0]], x[tbl[:,1]]) )
+                FL_offsets.append(FL_offset)
+                FL_offset += len(tbl)
+
+                tbl = g.treeletsH[v]
+                if len(tbl) > 0:
+                    FH_inputs.append( (x[tbl[:,0]], F.broadcast_to(x[v], (tbl.shape[0], DIM)), x[tbl[:,1]]) )
+                FH_offsets.append(FH_offset)
+                FH_offset += len(tbl)
+
+                tbl = g.treeletsR[v]
+                if len(tbl) > 0:
+                    FR_inputs.append( (x[tbl[:,0]], x[tbl[:,1]], F.broadcast_to(x[v], (tbl.shape[0], DIM))) )
+                FR_offsets.append(FR_offset)
+                FR_offset += len(tbl)
+
+            # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
+            FL_outputs = self.FL(*[F.vstack([xs[i] for xs in FL_inputs]) for i in range(3)])
+            FH_outputs = self.FH(*[F.vstack([xs[i] for xs in FH_inputs]) for i in range(3)])
+            FR_outputs = self.FR(*[F.vstack([xs[i] for xs in FR_inputs]) for i in range(3)])
+
             d = []
             for v in range(len(g.labels)):
-                h = self.xp.zeros(DIM, dtype=np.float32)
-                if g.treelets_degree[v] > 0:
-                    tbl = g.treeletsL[v]
-                    if len(tbl) > 0:
-                        h += F.sum(self.FL(F.broadcast_to(x[v], (tbl.shape[0], DIM)), x[tbl[:,0]], x[tbl[:,1]]), axis=0)
-                    tbl = g.treeletsH[v]
-                    if len(tbl) > 0:
-                        h += F.sum(self.FH(x[tbl[:,0]], F.broadcast_to(x[v], (tbl.shape[0], DIM)), x[tbl[:,1]]), axis=0)
-                    tbl = g.treeletsR[v]
-                    if len(tbl) > 0:
-                        h += F.sum(self.FR(x[tbl[:,0]], x[tbl[:,1]], F.broadcast_to(x[v], (tbl.shape[0], DIM))), axis=0)
-                    h /= g.treelets_degree[v]
+                h = F.sum(FL_outputs[FL_offsets[v] : FL_offsets[v] + len(g.treeletsL[v]), :], axis=0) + \
+                    F.sum(FH_outputs[FH_offsets[v] : FH_offsets[v] + len(g.treeletsH[v]), :], axis=0) + \
+                    F.sum(FR_outputs[FH_offsets[v] : FR_offsets[v] + len(g.treeletsR[v]), :], axis=0)
+                h /= (len(g.treeletsL[v]) + len(g.treeletsH[v]) + len(g.treeletsR[v]))
                 d.append(h)
-            x += F.vstack(d)
+            x_new += F.vstack(d)
 
-        return self.FP(x)
+        return self.FP(x_new)
 
 
 class Dataset(dataset.DatasetMixin):
@@ -201,38 +248,27 @@ class Dataset(dataset.DatasetMixin):
 
         out_edges = [[] for _ in range(nv)]
         in_edges  = [[] for _ in range(nv)]
-        degrees = [0 for _ in range(nv)]
         for (u,v) in edges:
             out_edges[u].append(v)
             in_edges[v].append(u)
-            degrees[u] += 1
-            degrees[v] += 1
         out_edges = [np.array(vs, dtype=np.int32) for vs in out_edges]
         in_edges  = [np.array(vs, dtype=np.int32) for vs in in_edges]
-        degrees   = np.array(degrees, dtype=np.int32)
 
         treeletsL = [[] for _ in range(nv)]
         treeletsH = [[] for _ in range(nv)]
         treeletsR = [[] for _ in range(nv)]
-        treelets_degree = [0 for _ in range(nv)]
         for (u,v,w) in treelets:
             treeletsL[u].append((v,w))
             treeletsH[v].append((u,w))
             treeletsR[w].append((u,v))
-            treelets_degree[u] += 1
-            treelets_degree[v] += 1
-            treelets_degree[w] += 1
         treeletsL = [np.array(xs, dtype=np.int32) for xs in treeletsL]
         treeletsH = [np.array(xs, dtype=np.int32) for xs in treeletsH]
         treeletsR = [np.array(xs, dtype=np.int32) for xs in treeletsR]
-        treelets_degree = np.array(treelets_degree, dtype=np.int32)
 
         return GraphData(
             labels=labels,
-            degrees=degrees,
             in_edges=in_edges,
             out_edges=out_edges,
-            treelets_degree=treelets_degree,
             treeletsL=treeletsL,
             treeletsH=treeletsH,
             treeletsR=treeletsR
@@ -240,21 +276,18 @@ class Dataset(dataset.DatasetMixin):
 
 GraphData = collections.namedtuple(
     "GraphData",
-    ["labels", "degrees", "in_edges", "out_edges", "treelets_degree", "treeletsL", "treeletsH", "treeletsR"]
+    ["labels", "in_edges", "out_edges", "treeletsL", "treeletsH", "treeletsR"]
 )
 
-def convert(batch, device = None):
-    return [(convert_GraphData(conj, device), convert_GraphData(stmt, device), y) for (conj,stmt,y) in batch]
+def convert(minibatch, device = None):
+    return [(convert_GraphData(conj, device), convert_GraphData(stmt, device), y) for (conj,stmt,y) in minibatch]
 
 def convert_GraphData(gd, device):
     return GraphData(
         labels  = chainer.dataset.convert.to_device(device, gd.labels),
-        degrees = chainer.dataset.convert.to_device(device, gd.degrees),
         in_edges  = [chainer.dataset.convert.to_device(device, ns) for ns in gd.in_edges],
         out_edges = [chainer.dataset.convert.to_device(device, ns) for ns in gd.out_edges],
-        treelets_degree = chainer.dataset.convert.to_device(device, gd.treelets_degree),
         treeletsL = [chainer.dataset.convert.to_device(device, tl) for tl in gd.treeletsL],
         treeletsH = [chainer.dataset.convert.to_device(device, tl) for tl in gd.treeletsH],
         treeletsR = [chainer.dataset.convert.to_device(device, tl) for tl in gd.treeletsR],
     )
-
