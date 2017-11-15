@@ -95,8 +95,8 @@ def main():
     
     trainer.run()
     
-    chainer.serializers.save_npz(os.path.join(args.out, args.embedding, 'model_final'), model)
-    chainer.serializers.save_npz(os.path.join(args.out, args.embedding, 'optimizer_final'), optimizer)
+    chainer.serializers.save_npz(os.path.join(args.out, 'model_final'), model)
+    chainer.serializers.save_npz(os.path.join(args.out, 'optimizer_final'), optimizer)
 
 if __name__ == '__main__':
     main()
