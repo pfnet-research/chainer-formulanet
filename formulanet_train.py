@@ -74,12 +74,17 @@ def main():
     model = formulanet.FormulaNet(vocab_size=len(symbols.symbols), steps=args.steps, order_preserving=args.preserve_order, conditional=args.conditional)
     if args.gpu >= 0:
         model.to_gpu(args.gpu)
-    
-    optimizer = optimizers.Adam()
+
+    # "We train our networks using RMSProp [47] with 0.001 learning rate and 1 × 10−4 weight decay.
+    # We lower the learning rate by 3X after each epoch."
+    optimizer = optimizers.RMSprop(lr=0.001)
     optimizer.setup(model)
+    optimizer.add_hook(chainer.optimizer.WeightDecay(10**(-4)))
+
     updater = training.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=args.gpu)
     
     trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=os.path.join(args.out))    
+    trainer.extend(extensions.ExponentialShift("lr", rate=1/3.0), trigger=(1, 'epoch'))
     trainer.extend(extensions.LogReport())
     trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
     trainer.extend(extensions.snapshot_object(model, filename='model_epoch-{.updater.epoch}'))
