@@ -75,11 +75,18 @@ class FormulaNet(chainer.Chain):
             self.classifier = Classifier(conditional)
 
     def __call__(self, minibatch):
+        predicted = []
+        expected = []
         loss = 0
         for (g_conj, g, y) in minibatch:
-            loss += self._forward1(g_conj, g, y)
+            predicted1, loss1 = self._forward1(g_conj, g, y)
+            predicted.append(predicted1[-1,:])
+            expected.append(1 if y else 0)
+            loss += loss1
         self.loss = loss / len(minibatch)
         reporter.report({'loss': self.loss}, self)
+        self.accuracy = F.accuracy(F.vstack(predicted), self.xp.array(expected, np.int32))
+        reporter.report({'accuracy': self.accuracy}, self)
         return self.loss
 
     def _forward1(self, g_conj, g, y):
@@ -109,7 +116,7 @@ class FormulaNet(chainer.Chain):
         else:
             labels = self.xp.zeros(shape=(1+self._steps,), dtype=np.int32)
 
-        return F.softmax_cross_entropy(predicted, labels)
+        return predicted, F.softmax_cross_entropy(predicted, labels)
 
     def predict(self, g_conj, g):
         return (F.argmax(logit(g_conj, g)) > 0)
