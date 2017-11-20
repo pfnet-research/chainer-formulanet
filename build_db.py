@@ -29,5 +29,5 @@ for i in range(1,1412):
     fname = "holstep/test/%04d" % i
     print("loading %s" % fname)
     xs = formulanet.Dataset(symbols.symbols, [holstep.read_file(fname)])
-    with gzip.open('results/test.pkl.gz', mode='wb') as f:
+    with gzip.open('results/test/%04d.pkl.gz' % i, mode='wb') as f:
         pickle.dump(xs._examples, f)
