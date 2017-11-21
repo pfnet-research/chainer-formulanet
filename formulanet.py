@@ -39,6 +39,39 @@ class Block(chainer.Chain):
         h = F.relu(self.bn2(self.fc2(h)))
         return h
 
+# dirty optimization
+class Block2(chainer.Chain):
+    def __init__(self):
+        super().__init__()
+        with self.init_scope():
+            self.fc1a = L.Linear(DIM, DIM, nobias=True)
+            self.fc1b = L.Linear(DIM, DIM, nobias=False)
+            self.fc2 = L.Linear(DIM, DIM)
+            self.bn1 = L.BatchNormalization(DIM)
+            self.bn2 = L.BatchNormalization(DIM)
+
+    def __call__(self, arg):
+        h = F.relu(self.bn1(arg))
+        h = F.relu(self.bn2(self.fc2(h)))
+        return h
+
+# dirty optimization
+class Block3(chainer.Chain):
+    def __init__(self):
+        super().__init__()
+        with self.init_scope():
+            self.fc1a = L.Linear(DIM, DIM, nobias=True)
+            self.fc1b = L.Linear(DIM, DIM, nobias=True)
+            self.fc1c = L.Linear(DIM, DIM, nobias=False)
+            self.fc2 = L.Linear(DIM, DIM)
+            self.bn1 = L.BatchNormalization(DIM)
+            self.bn2 = L.BatchNormalization(DIM)
+
+    def __call__(self, arg):
+        h = F.relu(self.bn1(arg))
+        h = F.relu(self.bn2(self.fc2(h)))
+        return h
+
 class Classifier(chainer.Chain):
     def __init__(self, conditional = True):
         super().__init__()
@@ -66,12 +99,12 @@ class FormulaNet(chainer.Chain):
         with self.init_scope():
             self.embed_id = L.EmbedID(vocab_size, DIM)
             self.FP = FP()
-            self.FI = Block(2)
-            self.FO = Block(2)
+            self.FI = Block2()
+            self.FO = Block2()
             if order_preserving:
-                self.FH = Block(3)
-                self.FL = Block(3)
-                self.FR = Block(3)
+                self.FH = Block3()
+                self.FL = Block3()
+                self.FR = Block3()
             self.classifier = Classifier(conditional)
 
     def __call__(self, minibatch):
@@ -142,6 +175,7 @@ class FormulaNet(chainer.Chain):
 
     def _update_nodes_embedding(self, g, x):
         x_new = x
+        zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
 
         FI_inputs = []
         FO_inputs = []
@@ -150,20 +184,26 @@ class FormulaNet(chainer.Chain):
         FI_offsets = []
         FO_offsets = []
 
+        # dirty optimization
+        FI_fc1a_x = self.FI.fc1a(x)
+        FI_fc1b_x = self.FI.fc1b(x)
+        FO_fc1a_x = self.FO.fc1a(x)
+        FO_fc1b_x = self.FO.fc1b(x)
+
         for v in range(len(g.labels)):
             if len(g.in_edges[v]) > 0:
-                FI_inputs.append( (x[g.in_edges[v],:], F.broadcast_to(x[v], (len(g.in_edges[v]), DIM))) )
+                FI_inputs.append( FI_fc1a_x[g.in_edges[v]] + F.broadcast_to(FI_fc1b_x[v], (len(g.in_edges[v]), DIM)) )
             FI_offsets.append(FI_offset)
             FI_offset += len(g.in_edges[v])
 
             if len(g.out_edges[v]) > 0:
-                FO_inputs.append( (F.broadcast_to(x[v], (len(g.out_edges[v]), DIM)), x[g.out_edges[v]]) )
+                FO_inputs.append( F.broadcast_to(FO_fc1a_x[v], (len(g.out_edges[v]), DIM)) + FO_fc1b_x[g.out_edges[v]] )
             FO_offsets.append(FO_offset)
             FO_offset += len(g.out_edges[v])
 
         # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
-        FI_outputs = self.FI(*[F.vstack([xs[i] for xs in FI_inputs]) for i in range(2)])
-        FO_outputs = self.FO(*[F.vstack([xs[i] for xs in FO_inputs]) for i in range(2)])
+        FI_outputs = self.FI(F.vstack(FI_inputs))
+        FO_outputs = self.FO(F.vstack(FO_inputs))
 
         d = []
         for v in range(len(g.labels)):
@@ -184,37 +224,51 @@ class FormulaNet(chainer.Chain):
             FH_offsets = []
             FR_offsets = []
 
+            # dirty optimization
+            FL_fc1a_x = self.FL.fc1a(x)
+            FL_fc1b_x = self.FL.fc1b(x)
+            FL_fc1c_x = self.FL.fc1c(x)
+            FH_fc1a_x = self.FH.fc1a(x)
+            FH_fc1b_x = self.FH.fc1b(x)
+            FH_fc1c_x = self.FH.fc1c(x)
+            FR_fc1a_x = self.FR.fc1a(x)
+            FR_fc1b_x = self.FR.fc1b(x)
+            FR_fc1c_x = self.FR.fc1c(x)
+
             for v in range(len(g.labels)):
                 tbl = g.treeletsL[v]
                 if len(tbl) > 0:
-                    FL_inputs.append( (F.broadcast_to(x[v], (tbl.shape[0], DIM)), x[tbl[:,0]], x[tbl[:,1]]) )
+                    FL_inputs.append( F.broadcast_to(FL_fc1a_x[v], (tbl.shape[0], DIM)) + FL_fc1b_x[tbl[:,0]] + FL_fc1c_x[tbl[:,1]] )
                 FL_offsets.append(FL_offset)
                 FL_offset += len(tbl)
 
                 tbl = g.treeletsH[v]
                 if len(tbl) > 0:
-                    FH_inputs.append( (x[tbl[:,0]], F.broadcast_to(x[v], (tbl.shape[0], DIM)), x[tbl[:,1]]) )
+                    FH_inputs.append( FH_fc1a_x[tbl[:,0]] + F.broadcast_to(FH_fc1b_x[v], (tbl.shape[0], DIM)) + FH_fc1c_x[tbl[:,1]] )
                 FH_offsets.append(FH_offset)
                 FH_offset += len(tbl)
 
                 tbl = g.treeletsR[v]
                 if len(tbl) > 0:
-                    FR_inputs.append( (x[tbl[:,0]], x[tbl[:,1]], F.broadcast_to(x[v], (tbl.shape[0], DIM))) )
+                    FR_inputs.append( FR_fc1a_x[tbl[:,0]] + FR_fc1b_x[tbl[:,1]] + F.broadcast_to(FR_fc1c_x[v], (tbl.shape[0], DIM)) )
                 FR_offsets.append(FR_offset)
                 FR_offset += len(tbl)
 
             # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
-            FL_outputs = self.FL(*[F.vstack([xs[i] for xs in FL_inputs]) for i in range(3)])
-            FH_outputs = self.FH(*[F.vstack([xs[i] for xs in FH_inputs]) for i in range(3)])
-            FR_outputs = self.FR(*[F.vstack([xs[i] for xs in FR_inputs]) for i in range(3)])
+            FL_outputs = self.FL(F.vstack(FL_inputs))
+            FH_outputs = self.FH(F.vstack(FH_inputs))
+            FR_outputs = self.FR(F.vstack(FR_inputs))
 
             d = []
             for v in range(len(g.labels)):
-                h = F.sum(FL_outputs[FL_offsets[v] : FL_offsets[v] + len(g.treeletsL[v]), :], axis=0) + \
-                    F.sum(FH_outputs[FH_offsets[v] : FH_offsets[v] + len(g.treeletsH[v]), :], axis=0) + \
-                    F.sum(FR_outputs[FH_offsets[v] : FR_offsets[v] + len(g.treeletsR[v]), :], axis=0)
-                h /= (len(g.treeletsL[v]) + len(g.treeletsH[v]) + len(g.treeletsR[v]))
-                d.append(h)
+                den = len(g.treeletsL[v]) + len(g.treeletsH[v]) + len(g.treeletsR[v])
+                if den == 0:
+                    d.append(zeros_DIM)
+                else:
+                    h = F.sum(FL_outputs[FL_offsets[v] : FL_offsets[v] + len(g.treeletsL[v]), :], axis=0) + \
+                        F.sum(FH_outputs[FH_offsets[v] : FH_offsets[v] + len(g.treeletsH[v]), :], axis=0) + \
+                        F.sum(FR_outputs[FH_offsets[v] : FR_offsets[v] + len(g.treeletsR[v]), :], axis=0)
+                    d.append(h / den)
             x_new += F.vstack(d)
 
         return self.FP(x_new)
