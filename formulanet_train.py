@@ -15,10 +15,13 @@ from chainer import training
 from chainer.training import extensions
 import numpy as np
 import os
+import sys
 
 import formulanet
 import holstep
 import symbols
+
+sys.setrecursionlimit(10000)
 
 def main():
     parser = argparse.ArgumentParser(description='chainer formulanet trainer')
