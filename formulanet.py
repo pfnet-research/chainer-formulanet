@@ -118,8 +118,13 @@ class FormulaNet(chainer.Chain):
             loss += loss1
         self.loss = loss / len(minibatch)
         reporter.report({'loss': self.loss}, self)
-        self.accuracy = F.accuracy(F.vstack(predicted), self.xp.array(expected, np.int32))
+
+        predicted = F.vstack(predicted)
+        with chainer.cuda.get_device_from_array(predicted.data):
+            expected = self.xp.array(expected, np.int32)
+        self.accuracy = F.accuracy(predicted, expected)
         reporter.report({'accuracy': self.accuracy}, self)
+
         return self.loss
 
     def _forward1(self, g_conj, g, y):
@@ -144,10 +149,11 @@ class FormulaNet(chainer.Chain):
         else:
             predicted = self.classifier(g_embeddings)
 
-        if y:
-            labels = self.xp.ones(shape=(1+self._steps,), dtype=np.int32)
-        else:
-            labels = self.xp.zeros(shape=(1+self._steps,), dtype=np.int32)
+        with chainer.cuda.get_device_from_array(predicted.data):
+            if y:
+                labels = self.xp.ones(shape=(1+self._steps,), dtype=np.int32)
+            else:
+                labels = self.xp.zeros(shape=(1+self._steps,), dtype=np.int32)
 
         return predicted, F.softmax_cross_entropy(predicted, labels)
 
@@ -175,7 +181,8 @@ class FormulaNet(chainer.Chain):
 
     def _update_nodes_embedding(self, g, x):
         x_new = x
-        zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
+        with chainer.cuda.get_device_from_array(x.data):
+            zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
 
         FI_inputs = []
         FO_inputs = []
