@@ -1,15 +1,17 @@
+from typing import Iterable, Text
+
 class Expr(object):
     pass
 
 class EIdent(Expr):
-    def __init__(self, name):
+    def __init__(self, name: Text) -> None:
         self.name = name
 
     def __str__(self):
         return self.name
 
 class EApply(Expr):
-    def __init__(self, fun, arg):
+    def __init__(self, fun: Expr, arg: Expr) -> None:
         self.fun = fun
         self.arg = arg
 
@@ -18,7 +20,7 @@ class EApply(Expr):
         return "({} {})".format(str(self.fun), str(self.arg))
 
 class EQuantified(Expr):
-    def __init__(self, binder, var, body):
+    def __init__(self, binder: Text, var: Text, body: Expr) -> None:
         self.binder = binder
         self.var = var
         self.body = body
@@ -27,7 +29,7 @@ class EQuantified(Expr):
         return "({} {}. {})".format(self.binder, self.var, str(self.body))
 
 class Thm:
-    def __init__(self, premises, conclusion):
+    def __init__(self, premises: Iterable[Expr], conclusion: Expr) -> None:
         self.premises = tuple(premises)
         self.conclusion = conclusion
 

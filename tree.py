@@ -1,22 +1,24 @@
 import collections 
-from expr import EIdent, EQuantified, EApply
+from typing import Dict, Generic, List, Set, Text, Tuple, TypeVar, Union
+from expr import EIdent, EQuantified, EApply, Expr, Thm
 
+L = TypeVar('L')
 
 # We intentionally not use collections.namedtuple because we need node identity.
 #Tree = collections.namedtuple("Tree", ["label", "children"])
-class Tree(object):
-    def __init__(self, label, children):
+class Tree(Generic[L]):
+    def __init__(self, label: L, children: List["Tree"]) -> None:
         self.label = label
         self.children = children
 
 
-def thm_to_tree(thm):
+def thm_to_tree(thm: Thm) -> Tree[Union[Text, Tuple[Text,Text]]]:
     premises   = Tree(",", [expr_to_tree(e) for e in thm.premises])
     conclusion = expr_to_tree(thm.conclusion)
     return Tree("|-",  [premises, conclusion])
 
 
-def expr_to_tree(e):
+def expr_to_tree(e: Expr) -> Tree[Union[Text, Tuple[Text,Text]]]:
     if isinstance(e, EIdent):
         return Tree(e.name, [])
     elif isinstance(e, EQuantified):
@@ -38,9 +40,9 @@ def expr_to_tree(e):
         assert False
 
 
-def collect_labels(t):
+def collect_labels(t: Tree[L]) -> Set[L]:
     ret = set()
-    def f(t):
+    def f(t: Tree):
         ret.add(t.label)
         for ch in t.children:
             f(ch)
@@ -48,18 +50,18 @@ def collect_labels(t):
     return ret
 
 
-def tree_to_graph(t):
-    nodes = []
-    edges = []
-    treelets = []
+def tree_to_graph(t: Tree[Union[Text,Tuple[Text,Text]]]) -> Tuple[List[Text], List[Tuple[int, int]], List[Tuple[int, int, int]]]:
+    nodes = [] # type: List[Text]
+    edges = [] # type: List[Tuple[int, int]]
+    treelets = [] # type: List[Tuple[int, int, int]]
 
-    def new_node(label):
+    def new_node(label: Text) -> int:
        n = len(nodes)
        nodes.append(label)
        return n
 
-    def process(t, env):
-        n_children = []
+    def process(t: Tree[Union[Text,Tuple[Text,Text]]], env: Dict[Text, Tuple[int, int]]) -> int:
+        n_children = [] # type: List[int]
 
         if isinstance(t.label, tuple):
             # 変数が実際には使われていなくてもノードを作ってしまっているのは元論文と違うかも
@@ -91,7 +93,7 @@ def tree_to_graph(t):
             build_treelets(n, n_children)
             return n
 
-    def process_args(n, args, env):
+    def process_args(n: int, args, env: Dict[Text, Tuple[int, int]]) -> List[int]:
         n_args = []
         for arg in args:
             n_arg = process(arg, env)
@@ -99,7 +101,7 @@ def tree_to_graph(t):
             n_args.append(n_arg)
         return n_args
 
-    def build_treelets(n, n_children):
+    def build_treelets(n: int, n_children: List[int]) -> None:
         for i, n_ch1 in enumerate(n_children):
             for n_ch2 in n_children[i+1:]:
                 treelets.append((n_ch1, n, n_ch2))
