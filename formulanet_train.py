@@ -30,7 +30,7 @@ def main():
                         help='Number of examples in each mini-batch')
     parser.add_argument('--epoch', '-e', type=int, default=5,
                         help='Number of sweeps over the dataset to train')
-    parser.add_argument('--gpus', type=str, default='',
+    parser.add_argument('--gpus', type=str, default='-1',
                         help='Set GPU device numbers with comma saparated. '
                         '(empty indicates CPU)')
     parser.add_argument('--dataset', '-i', default="holstep",
@@ -51,8 +51,6 @@ def main():
 
     args = parser.parse_args()
     args.gpus = list(map(int, args.gpus.split(',')))
-    if len(args.gpus)==0:
-        args.gpus.append(-1)
 
     print('# GPU: {}'.format(",".join(map(str, args.gpus))))
     print('# epoch: {}'.format(args.epoch))
