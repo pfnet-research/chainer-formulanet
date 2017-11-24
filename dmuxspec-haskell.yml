@@ -1,0 +1,25 @@
+version: 0
+os: ubuntu==16.04
+features:
+- custom:haskell-stack
+hardware:
+- cpu==2
+- ram==8192
+datasets:
+- holstep==1 @ /home/user/holstep
+custom_defs:
+  haskell-stack:
+    commands: |
+      curl -sSL https://get.haskellstack.org/ | sh
+    dependencies:
+    - apt:curl
+    - apt:g++
+    - apt:gcc
+    - apt:libc6-dev
+    - apt:libffi-dev
+    - apt:libgmp-dev
+    - apt:make
+    - apt:xz-utils
+    - apt:zlib1g-dev
+    - apt:git
+    - apt:gnupg
