@@ -30,8 +30,9 @@ def main():
                         help='Number of examples in each mini-batch')
     parser.add_argument('--epoch', '-e', type=int, default=5,
                         help='Number of sweeps over the dataset to train')
-    parser.add_argument('--gpu', '-g', type=int, default=-1,
-                        help='GPU ID (negative value indicates CPU)')
+    parser.add_argument('--gpus', type=str, default='',
+                        help='Set GPU device numbers with comma saparated. '
+                        '(empty indicates CPU)')
     parser.add_argument('--dataset', '-i', default="holstep",
                         help='Directory of holstep repository')
     parser.add_argument('--out', '-o', default='results',
@@ -47,9 +48,13 @@ def main():
     parser.add_argument('--conditional', action='store_true', help='Use contional model')
     parser.add_argument('--preserve-order', action='store_true', help='Use order-preserving model')
     parser.add_argument('--steps', type=int, default="3", help='Number of update steps')
-    args = parser.parse_args()
 
-    print('# GPU: {}'.format(args.gpu))
+    args = parser.parse_args()
+    args.gpus = list(map(int, args.gpus.split(',')))
+    if len(args.gpus)==0:
+        args.gpus.append(-1)
+
+    print('# GPU: {}'.format(",".join(map(str, args.gpus))))
     print('# epoch: {}'.format(args.epoch))
     print('')
     print('# conditional: {}'.format(args.conditional))
@@ -75,8 +80,8 @@ def main():
     test_iter = iterators.SerialIterator(test, args.batchsize, repeat=False, shuffle=False)
 
     model = formulanet.FormulaNet(vocab_size=len(symbols.symbols), steps=args.steps, order_preserving=args.preserve_order, conditional=args.conditional)
-    if args.gpu >= 0:
-        model.to_gpu(args.gpu)
+    if len(args.gpus) == 1 and args.gpus[0] >= 0:
+        model.to_gpu(args.gpus[0])
 
     # "We train our networks using RMSProp [47] with 0.001 learning rate and 1 × 10−4 weight decay.
     # We lower the learning rate by 3X after each epoch."
@@ -84,14 +89,21 @@ def main():
     optimizer.setup(model)
     optimizer.add_hook(chainer.optimizer.WeightDecay(10**(-4)))
 
-    updater = training.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=args.gpu)
+    if len(args.gpus)==1:
+        updater = training.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=args.gpus[0])
+    else:
+        devices = {}
+        devices["main"] = args.gpus[0]
+        for i in range(1,len(args.gpus)):
+            devices["gpu" + str(i)] = args.gpus[i]
+        updater = training.ParallelUpdater(train_iter, optimizer, converter=formulanet.convert, devices=devices)
     
     trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=os.path.join(args.out))    
     trainer.extend(extensions.ExponentialShift("lr", rate=1/3.0), trigger=(1, 'epoch'))
     trainer.extend(extensions.LogReport())
     trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
     trainer.extend(extensions.snapshot_object(model, filename='model_epoch-{.updater.epoch}'))
-    trainer.extend(extensions.Evaluator(test_iter, model, device=args.gpu, converter=formulanet.convert))
+    trainer.extend(extensions.Evaluator(test_iter, model, device=args.gpus[0], converter=formulanet.convert))
     trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'main/accuracy', 'validation/main/loss', 'validation/main/accuracy', 'elapsed_time']))
     trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss'], x_key='epoch', file_name='loss.png'))
     trainer.extend(extensions.PlotReport(['main/accuracy', 'validation/main/accuracy'], x_key='epoch', file_name='accuracy.png'))
