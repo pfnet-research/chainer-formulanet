@@ -26,6 +26,7 @@ sys.setrecursionlimit(10000)
 def main():
     parser = argparse.ArgumentParser(description='chainer formulanet trainer')
 
+    parser.add_argument('--chainermn', action='store_true', help='Use ChainerMN')
     parser.add_argument('--batchsize', '-b', type=int, default=32,
                         help='Number of examples in each mini-batch')
     parser.add_argument('--epoch', '-e', type=int, default=5,
@@ -52,40 +53,58 @@ def main():
     args = parser.parse_args()
     args.gpus = list(map(int, args.gpus.split(',')))
 
-    print('# GPU: {}'.format(",".join(map(str, args.gpus))))
-    print('# epoch: {}'.format(args.epoch))
-    print('')
-    print('# conditional: {}'.format(args.conditional))
-    print('# order_preserving: {}'.format(args.preserve_order))
-    print('# steps: {}'.format(args.steps))
-    print('')
+    if args.chainermn:
+        import chainermn
+        comm = chainermn.create_communicator()
+        args.gpus = [comm.intra_rank]
 
-    train = []
-    for i in range(1,10000):
-#    for i in [1]:
-        fname = "%s/train/%05d" % (args.dataset, i)
-        train.append(holstep.read_file(fname))
-    train = formulanet.Dataset(symbols.symbols, train)
+    if args.gpus[0] >= 0:
+        chainer.cuda.get_device(args.gpus[0]).use()
 
-    test = []
-    for i in range(1,1412):
-#    for i in [1]:
-        fname = "%s/test/%04d" % (args.dataset, i)
-        test.append(holstep.read_file(fname))
-    test  = formulanet.Dataset(symbols.symbols, test)
+    if not args.chainermn:
+        print('# GPU: {}'.format(",".join(map(str, args.gpus))))
+    if not args.chainermn or comm.rank==0:
+        print('# epoch: {}'.format(args.epoch))
+        print('# conditional: {}'.format(args.conditional))
+        print('# order_preserving: {}'.format(args.preserve_order))
+        print('# steps: {}'.format(args.steps))
+        print('')
+
+    if not args.chainermn or comm.rank==0:
+        train = []
+        for i in range(1,10000):
+        #for i in [1]:
+            fname = "%s/train/%05d" % (args.dataset, i)
+            train.append(holstep.read_file(fname))
+        train = formulanet.Dataset(symbols.symbols, train)
+
+        test = []
+        for i in range(1,1412):
+        #for i in [1]:
+            fname = "%s/test/%04d" % (args.dataset, i)
+            test.append(holstep.read_file(fname))
+        test = formulanet.Dataset(symbols.symbols, test)
+    else:
+        train, test = None, None
+
+    if args.chainermn:
+        train = chainermn.scatter_dataset(train, comm)
+        test = chainermn.scatter_dataset(test, comm)
     
     train_iter = iterators.SerialIterator(train, args.batchsize)
     test_iter = iterators.SerialIterator(test, args.batchsize, repeat=False, shuffle=False)
 
     model = formulanet.FormulaNet(vocab_size=len(symbols.symbols), steps=args.steps, order_preserving=args.preserve_order, conditional=args.conditional)
     if len(args.gpus) == 1 and args.gpus[0] >= 0:
-        model.to_gpu(args.gpus[0])
+        model.to_gpu()
 
     # "We train our networks using RMSProp [47] with 0.001 learning rate and 1 × 10−4 weight decay.
     # We lower the learning rate by 3X after each epoch."
     optimizer = optimizers.RMSprop(lr=0.001)
     optimizer.setup(model)
     optimizer.add_hook(chainer.optimizer.WeightDecay(10**(-4)))
+    if args.chainermn:
+        optimizer = chainermn.create_multi_node_optimizer(optimizer, comm)
 
     if len(args.gpus)==1:
         updater = training.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=args.gpus[0])
@@ -98,23 +117,29 @@ def main():
     
     trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=os.path.join(args.out))    
     trainer.extend(extensions.ExponentialShift("lr", rate=1/3.0), trigger=(1, 'epoch'))
-    trainer.extend(extensions.LogReport())
-    trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
-    trainer.extend(extensions.snapshot_object(model, filename='model_epoch-{.updater.epoch}'))
-    trainer.extend(extensions.Evaluator(test_iter, model, device=args.gpus[0], converter=formulanet.convert))
-    trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'main/accuracy', 'validation/main/loss', 'validation/main/accuracy', 'elapsed_time']))
-    trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss'], x_key='epoch', file_name='loss.png'))
-    trainer.extend(extensions.PlotReport(['main/accuracy', 'validation/main/accuracy'], x_key='epoch', file_name='accuracy.png'))
-    #trainer.extend(extensions.dump_graph('main/loss'))
-    
+
+    evaluator = extensions.Evaluator(test_iter, model, device=args.gpus[0], converter=formulanet.convert)
+    if args.chainermn:
+        evaluator = chainermn.create_multi_node_evaluator(evaluator, comm)
+    trainer.extend(evaluator)
+
+    if not args.chainermn or comm.rank == 0:
+        trainer.extend(extensions.LogReport())
+        trainer.extend(extensions.PrintReport(['epoch', 'main/loss', 'main/accuracy', 'validation/main/loss', 'validation/main/accuracy', 'elapsed_time']))
+        trainer.extend(extensions.PlotReport(['main/loss', 'validation/main/loss'], x_key='epoch', file_name='loss.png'))
+        trainer.extend(extensions.PlotReport(['main/accuracy', 'validation/main/accuracy'], x_key='epoch', file_name='accuracy.png'))
+        trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
+        trainer.extend(extensions.snapshot_object(model, filename='model_epoch-{.updater.epoch}'))
+
     if args.resume:
         # Resume from a snapshot
         chainer.serializers.load_npz(args.resume, trainer)
     
     trainer.run()
-    
-    chainer.serializers.save_npz(os.path.join(args.out, 'model_final'), model)
-    chainer.serializers.save_npz(os.path.join(args.out, 'optimizer_final'), optimizer)
+
+    if not args.chainermn or comm.rank == 0:
+        chainer.serializers.save_npz(os.path.join(args.out, 'model_final'), model)
+        chainer.serializers.save_npz(os.path.join(args.out, 'optimizer_final'), optimizer)
 
 if __name__ == '__main__':
     main()
