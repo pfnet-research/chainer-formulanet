@@ -107,79 +107,79 @@ class FormulaNet(chainer.Chain):
                 self.FR = Block3()
             self.classifier = Classifier(conditional)
 
-    def __call__(self, minibatch):
-        predicted = []
-        expected = []
-        loss = 0
-        for (g_conj, g, y) in minibatch:
-            predicted1, loss1 = self._forward1(g_conj, g, y)
-            predicted.append(predicted1[-1,:])
-            expected.append(1 if y else 0)
-            loss += loss1
-        self.loss = loss / len(minibatch)
+    def __call__(self, gs, minibatch):
+        #import time
+        #from datetime import datetime
+        #start = time.time()
+        #print("__call__ enter: " + str(datetime.now()))
+        
+        predicted, loss = self._forward(gs, minibatch)
+        self.loss = loss
         reporter.report({'loss': self.loss}, self)
 
-        predicted = F.vstack(predicted)
         with chainer.cuda.get_device_from_array(predicted.data):
-            expected = self.xp.array(expected, np.int32)
+            expected = self.xp.array([1 if y else 0 for (conj, stmt, y) in minibatch], np.int32)
         self.accuracy = F.accuracy(predicted, expected)
         reporter.report({'accuracy': self.accuracy}, self)
 
-        return self.loss
+        #print("__call__ exit: " + str(datetime.now()))
+        #print("elapsed_time: {0} sec".format(time.time() - start))
 
-    def _forward1(self, g_conj, g, y):
-        x = self._initial_nodes_embedding(g)
-        g_embeddings = [F.max(x, axis=0, keepdims=True)]
-        if self._conditional:
-            x_conj = self._initial_nodes_embedding(g_conj)
-            g_conj_embeddings = [F.max(x_conj, axis=0, keepdims=True)]
+        return loss
 
+    def _forward(self, gs, minibatch):
+        stmt_embeddings = []
+        conj_embeddings = []
+        labels = []
+
+        def collect_embedding():
+            es = [self._compute_graph_embedding(gs, x, i) for i in range(len(gs.node_ranges))]
+            for (conj, stmt, y) in minibatch:
+                stmt_embeddings.append(es[stmt])
+                if self._conditional:
+                    conj_embeddings.append(es[conj])
+                labels.append(1 if y else 0)
+
+        x = self._initial_nodes_embedding(gs)
+        collect_embedding()
         for i in range(self._steps):
-            x = self._update_nodes_embedding(g, x)
-            g_embeddings.append(F.max(x, axis=0, keepdims=True))
-            if self._conditional:
-                x_conj = self._update_nodes_embedding(g_conj, x_conj)
-                g_conj_embeddings.append(F.max(x_conj, axis=0, keepdims=True))
-        g_embeddings = F.vstack(g_embeddings)
+            # print("step " + str(i))
+            x = self._update_nodes_embedding(gs, x)
+            collect_embedding()
+
+        stmt_embeddings = F.vstack(stmt_embeddings)
         if self._conditional:
-            g_conj_embeddings = F.vstack(g_conj_embeddings)
+            conj_embeddings = F.vstack(conj_embeddings)
 
         if self._conditional:
-            predicted = self.classifier(g_conj_embeddings, g_embeddings)
+            predicted = self.classifier(conj_embeddings, stmt_embeddings)
         else:
-            predicted = self.classifier(g_embeddings)
+            predicted = self.classifier(stmt_embeddings)
 
         with chainer.cuda.get_device_from_array(predicted.data):
-            if y:
-                labels = self.xp.ones(shape=(1+self._steps,), dtype=np.int32)
-            else:
-                labels = self.xp.zeros(shape=(1+self._steps,), dtype=np.int32)
+            labels = self.xp.array(labels, dtype=np.int32)
 
-        return predicted, F.softmax_cross_entropy(predicted, labels)
+        return predicted[-len(minibatch):], F.softmax_cross_entropy(predicted, labels)
 
-    def predict(self, g_conj, g):
-        return (F.argmax(logit(g_conj, g)) > 0)
+    def predict(self, gs, conj, stmt):
+        return (F.argmax(logit(gs, conj, stmt)) > 0)
 
-    def logit(self, g_conj, g):
-        x = self._initial_nodes_embedding(g)
-        if self._conditional:
-            x_conj = self._initial_nodes_embedding(g_conj)
-
+    def logit(self, gs, conj, stmt):
+        x = self._initial_nodes_embedding(gs)
         for i in range(self._steps):
-            x = self._update_nodes_embedding(g, x)
-            if self._conditional:
-                x_conj = self._update_nodes_embedding(g_conj, x_conj)
+            x = self._update_nodes_embedding(gs, x)
 
-        g_embedding = F.max(x, axis=0, keepdims=True)
+        stmt_embedding = self._compute_graph_embedding(gs, x, stmt)
         if self._conditional:
-            return self.classifier(F.max(x_conj, axis=0, keepdims=True), g_embeddings)[0]
+            conj_emedding = self._compute_graph_embedding(gs, x, conj)
+            return self.classifier(conj_embedding, stmt_embedding)[0]
         else:
-            return self.classifier(g_embeddings)[0]
+            return self.classifier(stmt_embedding)[0]
 
-    def _initial_nodes_embedding(self, g):
-        return self.embed_id(g.labels)
+    def _initial_nodes_embedding(self, gs):
+        return self.embed_id(gs.labels)
 
-    def _update_nodes_embedding(self, g, x):
+    def _update_nodes_embedding(self, gs, x):
         x_new = x
         with chainer.cuda.get_device_from_array(x.data):
             zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
@@ -197,26 +197,26 @@ class FormulaNet(chainer.Chain):
         FO_fc1a_x = self.FO.fc1a(x)
         FO_fc1b_x = self.FO.fc1b(x)
 
-        for v in range(len(g.labels)):
-            if len(g.in_edges[v]) > 0:
-                FI_inputs.append( FI_fc1a_x[g.in_edges[v]] + F.broadcast_to(FI_fc1b_x[v], (len(g.in_edges[v]), DIM)) )
+        for v in range(len(gs.labels)):
+            if len(gs.in_edges[v]) > 0:
+                FI_inputs.append( FI_fc1a_x[gs.in_edges[v]] + F.broadcast_to(FI_fc1b_x[v], (len(gs.in_edges[v]), DIM)) )
             FI_offsets.append(FI_offset)
-            FI_offset += len(g.in_edges[v])
+            FI_offset += len(gs.in_edges[v])
 
-            if len(g.out_edges[v]) > 0:
-                FO_inputs.append( F.broadcast_to(FO_fc1a_x[v], (len(g.out_edges[v]), DIM)) + FO_fc1b_x[g.out_edges[v]] )
+            if len(gs.out_edges[v]) > 0:
+                FO_inputs.append( F.broadcast_to(FO_fc1a_x[v], (len(gs.out_edges[v]), DIM)) + FO_fc1b_x[gs.out_edges[v]] )
             FO_offsets.append(FO_offset)
-            FO_offset += len(g.out_edges[v])
+            FO_offset += len(gs.out_edges[v])
 
         # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
         FI_outputs = self.FI(F.vstack(FI_inputs))
         FO_outputs = self.FO(F.vstack(FO_inputs))
 
         d = []
-        for v in range(len(g.labels)):
-            h = F.sum(FI_outputs[FI_offsets[v] : FI_offsets[v] + len(g.in_edges[v]),  :], axis=0) + \
-                F.sum(FO_outputs[FO_offsets[v] : FO_offsets[v] + len(g.out_edges[v]), :], axis=0)
-            h /= (len(g.in_edges[v]) + len(g.out_edges[v]))
+        for v in range(len(gs.labels)):
+            h = F.sum(FI_outputs[FI_offsets[v] : FI_offsets[v] + len(gs.in_edges[v]),  :], axis=0) + \
+                F.sum(FO_outputs[FO_offsets[v] : FO_offsets[v] + len(gs.out_edges[v]), :], axis=0)
+            h /= (len(gs.in_edges[v]) + len(gs.out_edges[v]))
             d.append(h)
         x_new += F.vstack(d)
 
@@ -242,20 +242,20 @@ class FormulaNet(chainer.Chain):
             FR_fc1b_x = self.FR.fc1b(x)
             FR_fc1c_x = self.FR.fc1c(x)
 
-            for v in range(len(g.labels)):
-                tbl = g.treeletsL[v]
+            for v in range(len(gs.labels)):
+                tbl = gs.treeletsL[v]
                 if len(tbl) > 0:
                     FL_inputs.append( F.broadcast_to(FL_fc1a_x[v], (tbl.shape[0], DIM)) + FL_fc1b_x[tbl[:,0]] + FL_fc1c_x[tbl[:,1]] )
                 FL_offsets.append(FL_offset)
                 FL_offset += len(tbl)
 
-                tbl = g.treeletsH[v]
+                tbl = gs.treeletsH[v]
                 if len(tbl) > 0:
                     FH_inputs.append( FH_fc1a_x[tbl[:,0]] + F.broadcast_to(FH_fc1b_x[v], (tbl.shape[0], DIM)) + FH_fc1c_x[tbl[:,1]] )
                 FH_offsets.append(FH_offset)
                 FH_offset += len(tbl)
 
-                tbl = g.treeletsR[v]
+                tbl = gs.treeletsR[v]
                 if len(tbl) > 0:
                     FR_inputs.append( FR_fc1a_x[tbl[:,0]] + FR_fc1b_x[tbl[:,1]] + F.broadcast_to(FR_fc1c_x[v], (tbl.shape[0], DIM)) )
                 FR_offsets.append(FR_offset)
@@ -267,18 +267,22 @@ class FormulaNet(chainer.Chain):
             FR_outputs = self.FR(F.vstack(FR_inputs))
 
             d = []
-            for v in range(len(g.labels)):
-                den = len(g.treeletsL[v]) + len(g.treeletsH[v]) + len(g.treeletsR[v])
+            for v in range(len(gs.labels)):
+                den = len(gs.treeletsL[v]) + len(gs.treeletsH[v]) + len(gs.treeletsR[v])
                 if den == 0:
                     d.append(zeros_DIM)
                 else:
-                    h = F.sum(FL_outputs[FL_offsets[v] : FL_offsets[v] + len(g.treeletsL[v]), :], axis=0) + \
-                        F.sum(FH_outputs[FH_offsets[v] : FH_offsets[v] + len(g.treeletsH[v]), :], axis=0) + \
-                        F.sum(FR_outputs[FH_offsets[v] : FR_offsets[v] + len(g.treeletsR[v]), :], axis=0)
+                    h = F.sum(FL_outputs[FL_offsets[v] : FL_offsets[v] + len(gs.treeletsL[v]), :], axis=0) + \
+                        F.sum(FH_outputs[FH_offsets[v] : FH_offsets[v] + len(gs.treeletsH[v]), :], axis=0) + \
+                        F.sum(FR_outputs[FH_offsets[v] : FR_offsets[v] + len(gs.treeletsR[v]), :], axis=0)
                     d.append(h / den)
             x_new += F.vstack(d)
 
         return self.FP(x_new)
+
+    def _compute_graph_embedding(self, gs, x, stmt):
+        (beg,end) = gs.node_ranges[stmt]
+        return F.max(x[beg:end], axis=0, keepdims=True)
 
 
 class Dataset(dataset.DatasetMixin):
@@ -347,15 +351,58 @@ GraphData = collections.namedtuple(
     ["labels", "in_edges", "out_edges", "treeletsL", "treeletsH", "treeletsR"]
 )
 
-def convert(minibatch, device = None):
-    return [(convert_GraphData(conj, device), convert_GraphData(stmt, device), y) for (conj,stmt,y) in minibatch]
 
-def convert_GraphData(gd, device):
-    return GraphData(
-        labels  = chainer.dataset.convert.to_device(device, gd.labels),
-        in_edges  = [chainer.dataset.convert.to_device(device, ns) for ns in gd.in_edges],
-        out_edges = [chainer.dataset.convert.to_device(device, ns) for ns in gd.out_edges],
-        treeletsL = [chainer.dataset.convert.to_device(device, tl) for tl in gd.treeletsL],
-        treeletsH = [chainer.dataset.convert.to_device(device, tl) for tl in gd.treeletsH],
-        treeletsR = [chainer.dataset.convert.to_device(device, tl) for tl in gd.treeletsR],
+GraphsData = collections.namedtuple(
+    "GraphsData",
+    ["node_ranges", "labels", "in_edges", "out_edges", "treeletsL", "treeletsH", "treeletsR"]
+)
+
+def convert(minibatch, device = None):
+    node_offset = 0
+    node_ranges = []
+    table = {}
+
+    labels = []
+    in_edges = []
+    out_edges = []
+    treeletsL = []
+    treeletsH = []
+    treeletsR = []
+
+    def f(gd):
+        nonlocal node_offset
+        if id(gd) in table:
+            return table[id(gd)]
+
+        labels.append(gd.labels)
+        for ns in gd.in_edges:
+            in_edges.append(chainer.dataset.convert.to_device(device, ns + node_offset))
+        for ns in gd.out_edges:
+            out_edges.append(chainer.dataset.convert.to_device(device, ns + node_offset))
+        for tl in gd.treeletsL:
+            treeletsL.append(chainer.dataset.convert.to_device(device, tl + node_offset))
+        for tl in gd.treeletsH:
+            treeletsH.append(chainer.dataset.convert.to_device(device, tl + node_offset))
+        for tl in gd.treeletsR:
+            treeletsR.append(chainer.dataset.convert.to_device(device, tl + node_offset))
+
+        ret = len(node_ranges)
+        node_ranges.append( (node_offset, node_offset+len(gd.labels)) )
+        node_offset += len(gd.labels)
+        table[id(gd)] = ret
+
+        return ret
+
+    minibatch = [(f(conj), f(stmt), y) for (conj,stmt,y) in minibatch]
+
+    gs = GraphsData(
+        node_ranges = node_ranges,
+        labels      = chainer.dataset.convert.to_device(device, np.concatenate(labels)),
+        in_edges    = in_edges,
+        out_edges   = out_edges,
+        treeletsL   = treeletsL,
+        treeletsH   = treeletsH,
+        treeletsR   = treeletsR,
     )
+
+    return (gs, minibatch)
