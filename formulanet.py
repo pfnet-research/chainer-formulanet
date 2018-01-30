@@ -1,5 +1,6 @@
 import chainer
 from chainer import dataset
+from chainer import function_node
 import chainer.functions as F
 import chainer.links as L
 from chainer import reporter
@@ -181,8 +182,6 @@ class FormulaNet(chainer.Chain):
 
     def _update_nodes_embedding(self, gs, x):
         x_new = x
-        with chainer.cuda.get_device_from_array(x.data):
-            zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
 
         # dirty optimization
         FI_fc1a_x = self.FI.fc1a(x)
@@ -196,15 +195,7 @@ class FormulaNet(chainer.Chain):
         FI_outputs = self.FI(FI_inputs)
         FO_outputs = self.FO(FO_inputs)
 
-        # これを独自の FunctionNode 化したい
-        d = []
-        for v in range(len(gs.labels)):
-            h = F.sum(FI_outputs[gs.in_edges[v], :], axis=0) + \
-                F.sum(FO_outputs[gs.out_edges[v],:], axis=0)
-            h /= (len(gs.in_edges[v]) + len(gs.out_edges[v]))
-            d.append(h)
-        d = F.vstack(d)
-        # ここまで独自の FunctionNode 化したい
+        d = gather_edges_to_vertex(gs, FI_outputs, FO_outputs)
 
         x_new += d
 
@@ -228,19 +219,7 @@ class FormulaNet(chainer.Chain):
             FH_outputs = self.FH(FH_inputs)
             FR_outputs = self.FR(FR_inputs)
 
-            # これを独自の FunctionNode 化したい
-            d = []
-            for v in range(len(gs.labels)):
-                den = len(gs.treeletsL[v]) + len(gs.treeletsH[v]) + len(gs.treeletsR[v])
-                if den == 0:
-                    d.append(zeros_DIM)
-                else:
-                    h = F.sum(FL_outputs[gs.treeletsL[v], :], axis=0) + \
-                        F.sum(FH_outputs[gs.treeletsH[v], :], axis=0) + \
-                        F.sum(FR_outputs[gs.treeletsR[v], :], axis=0)
-                    d.append(h / den)
-            d = F.vstack(d)
-            # ここまで独自の FunctionNode 化したい
+            d = gather_treelets_to_vertex(gs, FL_outputs, FH_outputs, FR_outputs)
 
             x_new += d
 
@@ -249,6 +228,131 @@ class FormulaNet(chainer.Chain):
     def _compute_graph_embedding(self, gs, x, stmt):
         (beg,end) = gs.node_ranges[stmt]
         return F.max(x[beg:end], axis=0, keepdims=True)
+
+
+class GatherEdgesToVertex(function_node.FunctionNode):
+    def __init__(self, gs):
+        self.gs = gs
+
+    def check_type_forward(self, in_types):
+        chainer.utils.type_check.expect(
+            in_types.size() == 2,
+            in_types[0].dtype.kind == 'f',
+            in_types[1].dtype.kind == 'f',
+            in_types[0].shape == (len(self.gs.edges), DIM),
+            in_types[1].shape == (len(self.gs.edges), DIM),
+        )
+
+    def forward(self, inputs):
+        xp = chainer.cuda.get_array_module(*inputs)
+        FI_outputs, FO_outputs = inputs
+        ret = xp.zeros((len(self.gs.labels), DIM), np.float32)
+        for v in range(len(self.gs.labels)):
+            den = len(self.gs.in_edges[v]) + len(self.gs.out_edges[v])
+            xp.sum(FI_outputs[self.gs.in_edges[v],  :], axis=0, out=ret[v,:])
+            xp.sum(FO_outputs[self.gs.out_edges[v], :], axis=0, out=ret[v,:])
+            xp.divide(ret[v,:], den, out=ret[v,:])
+        return ret,
+
+    # XXX: This is not differentiable
+    def backward(self, indexes, grad_outputs):
+        gy, = grad_outputs
+        gy = gy.data
+        xp = chainer.cuda.get_array_module(gy)
+        gFI = xp.zeros((len(self.gs.edges), DIM), np.float32)
+        gFO = xp.zeros((len(self.gs.edges), DIM), np.float32)
+        for v in range(len(self.gs.labels)):
+            den = len(self.gs.in_edges[v]) + len(self.gs.out_edges[v])
+            g = gy[v] / den
+            if xp is np:
+                np.add.at(gFI, self.gs.in_edges[v], g)
+                np.add.at(gFO, self.gs.out_edges[v], g)
+            else:
+                gFI.scatter_add(self.gs.in_edges[v], g)
+                gFO.scatter_add(self.gs.out_edges[v], g)
+        return chainer.Variable(gFI), chainer.Variable(gFO)
+
+def gather_edges_to_vertex(gs, FI_outputs, FO_outputs):
+    if True:
+        y, = GatherEdgesToVertex(gs).apply((FI_outputs, FO_outputs))
+        return y
+    else:
+        d = []
+        for v in range(len(self.gs.labels)):
+            h = F.sum(FI_outputs[self.gs.in_edges[v], :], axis=0) + \
+                F.sum(FO_outputs[self.gs.out_edges[v],:], axis=0)
+            h /= (len(self.gs.in_edges[v]) + len(self.gs.out_edges[v]))
+            d.append(h)
+        return F.vstack(d)
+
+
+class GatherTreeletsToVertex(function_node.FunctionNode):
+    def __init__(self, gs):
+        self.gs = gs
+
+    def check_type_forward(self, in_types):
+        chainer.utils.type_check.expect(
+            in_types.size() == 3,
+            in_types[0].dtype.kind == 'f',
+            in_types[1].dtype.kind == 'f',
+            in_types[2].dtype.kind == 'f',
+            in_types[0].shape == (len(self.gs.treelets), DIM),
+            in_types[1].shape == (len(self.gs.treelets), DIM),
+            in_types[2].shape == (len(self.gs.treelets), DIM),
+        )
+
+    def forward(self, inputs):
+        xp = chainer.cuda.get_array_module(*inputs)
+        FL_outputs, FH_outputs, FR_outputs = inputs
+        ret = xp.zeros((len(self.gs.labels), DIM), np.float32)
+        for v in range(len(self.gs.labels)):
+            den = len(self.gs.treeletsL[v]) + len(self.gs.treeletsH[v]) + len(self.gs.treeletsR[v])
+            if den != 0:
+                xp.sum(FL_outputs[self.gs.treeletsL[v], :], axis=0, out=ret[v,:])
+                xp.sum(FH_outputs[self.gs.treeletsH[v], :], axis=0, out=ret[v,:])
+                xp.sum(FR_outputs[self.gs.treeletsR[v], :], axis=0, out=ret[v,:])
+                xp.divide(ret[v,:], den, out=ret[v,:])
+        return ret,
+
+    # XXX: This is not differentiable
+    def backward(self, indexes, grad_outputs):
+        gy, = grad_outputs
+        gy = gy.data
+        xp = chainer.cuda.get_array_module(gy)
+        gFL = xp.zeros((len(self.gs.treelets), DIM), np.float32)
+        gFH = xp.zeros((len(self.gs.treelets), DIM), np.float32)
+        gFR = xp.zeros((len(self.gs.treelets), DIM), np.float32)
+        for v in range(len(self.gs.labels)):
+            d = len(self.gs.in_edges[v]) + len(self.gs.out_edges[v])
+            g = gy[v] / d
+            if xp is np:
+                np.add.at(gFL, self.gs.treeletsL[v], g)
+                np.add.at(gFH, self.gs.treeletsH[v], g)
+                np.add.at(gFR, self.gs.treeletsR[v], g)
+            else:
+                gFL.scatter_add(self.gs.treeletsL[v], g)
+                gFH.scatter_add(self.gs.treeletsH[v], g)
+                gFR.scatter_add(self.gs.treeletsR[v], g)
+        return chainer.Variable(gFL), chainer.Variable(gFH), chainer.Variable(gFR)
+
+def gather_treelets_to_vertex(gs, FL_outputs, FH_outputs, FR_outputs):
+    if True:
+        y, = GatherTreeletsToVertex(gs).apply((FL_outputs, FH_outputs, FR_outputs))
+        return y
+    else:
+        with chainer.cuda.get_device_from_array(FL_outputs.data):
+            zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
+        d = []
+        for v in range(len(gs.labels)):
+            den = len(gs.treeletsL[v]) + len(gs.treeletsH[v]) + len(gs.treeletsR[v])
+            if den == 0:
+                d.append(zeros_DIM)
+            else:
+                h = F.sum(FL_outputs[gs.treeletsL[v], :], axis=0) + \
+                    F.sum(FH_outputs[gs.treeletsH[v], :], axis=0) + \
+                    F.sum(FR_outputs[gs.treeletsR[v], :], axis=0)
+                d.append(h / den)
+        return F.vstack(d)
 
 
 class Dataset(dataset.DatasetMixin):
