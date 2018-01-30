@@ -184,53 +184,31 @@ class FormulaNet(chainer.Chain):
         with chainer.cuda.get_device_from_array(x.data):
             zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
 
-        FI_inputs = []
-        FO_inputs = []
-        FI_offset = 0
-        FO_offset = 0
-        FI_offsets = []
-        FO_offsets = []
-
         # dirty optimization
         FI_fc1a_x = self.FI.fc1a(x)
         FI_fc1b_x = self.FI.fc1b(x)
         FO_fc1a_x = self.FO.fc1a(x)
         FO_fc1b_x = self.FO.fc1b(x)
-
-        for v in range(len(gs.labels)):
-            if len(gs.in_edges[v]) > 0:
-                FI_inputs.append( FI_fc1a_x[gs.in_edges[v]] + F.broadcast_to(FI_fc1b_x[v], (len(gs.in_edges[v]), DIM)) )
-            FI_offsets.append(FI_offset)
-            FI_offset += len(gs.in_edges[v])
-
-            if len(gs.out_edges[v]) > 0:
-                FO_inputs.append( F.broadcast_to(FO_fc1a_x[v], (len(gs.out_edges[v]), DIM)) + FO_fc1b_x[gs.out_edges[v]] )
-            FO_offsets.append(FO_offset)
-            FO_offset += len(gs.out_edges[v])
+        FI_inputs = FI_fc1a_x[gs.edges[:,0]] + FI_fc1b_x[gs.edges[:,1]]
+        FO_inputs = FO_fc1a_x[gs.edges[:,0]] + FO_fc1b_x[gs.edges[:,1]]
 
         # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
-        FI_outputs = self.FI(F.vstack(FI_inputs))
-        FO_outputs = self.FO(F.vstack(FO_inputs))
+        FI_outputs = self.FI(FI_inputs)
+        FO_outputs = self.FO(FO_inputs)
 
+        # これを独自の FunctionNode 化したい
         d = []
         for v in range(len(gs.labels)):
-            h = F.sum(FI_outputs[FI_offsets[v] : FI_offsets[v] + len(gs.in_edges[v]),  :], axis=0) + \
-                F.sum(FO_outputs[FO_offsets[v] : FO_offsets[v] + len(gs.out_edges[v]), :], axis=0)
+            h = F.sum(FI_outputs[gs.in_edges[v], :], axis=0) + \
+                F.sum(FO_outputs[gs.out_edges[v],:], axis=0)
             h /= (len(gs.in_edges[v]) + len(gs.out_edges[v]))
             d.append(h)
-        x_new += F.vstack(d)
+        d = F.vstack(d)
+        # ここまで独自の FunctionNode 化したい
+
+        x_new += d
 
         if self._order_preserving:
-            FL_inputs = []
-            FH_inputs = []
-            FR_inputs = []
-            FL_offset = 0
-            FH_offset = 0
-            FR_offset = 0
-            FL_offsets = []
-            FH_offsets = []
-            FR_offsets = []
-
             # dirty optimization
             FL_fc1a_x = self.FL.fc1a(x)
             FL_fc1b_x = self.FL.fc1b(x)
@@ -241,42 +219,30 @@ class FormulaNet(chainer.Chain):
             FR_fc1a_x = self.FR.fc1a(x)
             FR_fc1b_x = self.FR.fc1b(x)
             FR_fc1c_x = self.FR.fc1c(x)
-
-            for v in range(len(gs.labels)):
-                tbl = gs.treeletsL[v]
-                if len(tbl) > 0:
-                    FL_inputs.append( F.broadcast_to(FL_fc1a_x[v], (tbl.shape[0], DIM)) + FL_fc1b_x[tbl[:,0]] + FL_fc1c_x[tbl[:,1]] )
-                FL_offsets.append(FL_offset)
-                FL_offset += len(tbl)
-
-                tbl = gs.treeletsH[v]
-                if len(tbl) > 0:
-                    FH_inputs.append( FH_fc1a_x[tbl[:,0]] + F.broadcast_to(FH_fc1b_x[v], (tbl.shape[0], DIM)) + FH_fc1c_x[tbl[:,1]] )
-                FH_offsets.append(FH_offset)
-                FH_offset += len(tbl)
-
-                tbl = gs.treeletsR[v]
-                if len(tbl) > 0:
-                    FR_inputs.append( FR_fc1a_x[tbl[:,0]] + FR_fc1b_x[tbl[:,1]] + F.broadcast_to(FR_fc1c_x[v], (tbl.shape[0], DIM)) )
-                FR_offsets.append(FR_offset)
-                FR_offset += len(tbl)
+            FL_inputs = FL_fc1a_x[gs.treelets[:,0]] + FL_fc1b_x[gs.treelets[:,1]] + FL_fc1c_x[gs.treelets[:,2]]
+            FH_inputs = FH_fc1a_x[gs.treelets[:,0]] + FH_fc1b_x[gs.treelets[:,1]] + FH_fc1c_x[gs.treelets[:,2]]
+            FR_inputs = FR_fc1a_x[gs.treelets[:,0]] + FR_fc1b_x[gs.treelets[:,1]] + FR_fc1c_x[gs.treelets[:,2]]
 
             # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
-            FL_outputs = self.FL(F.vstack(FL_inputs))
-            FH_outputs = self.FH(F.vstack(FH_inputs))
-            FR_outputs = self.FR(F.vstack(FR_inputs))
+            FL_outputs = self.FL(FL_inputs)
+            FH_outputs = self.FH(FH_inputs)
+            FR_outputs = self.FR(FR_inputs)
 
+            # これを独自の FunctionNode 化したい
             d = []
             for v in range(len(gs.labels)):
                 den = len(gs.treeletsL[v]) + len(gs.treeletsH[v]) + len(gs.treeletsR[v])
                 if den == 0:
                     d.append(zeros_DIM)
                 else:
-                    h = F.sum(FL_outputs[FL_offsets[v] : FL_offsets[v] + len(gs.treeletsL[v]), :], axis=0) + \
-                        F.sum(FH_outputs[FH_offsets[v] : FH_offsets[v] + len(gs.treeletsH[v]), :], axis=0) + \
-                        F.sum(FR_outputs[FH_offsets[v] : FR_offsets[v] + len(gs.treeletsR[v]), :], axis=0)
+                    h = F.sum(FL_outputs[gs.treeletsL[v], :], axis=0) + \
+                        F.sum(FH_outputs[gs.treeletsH[v], :], axis=0) + \
+                        F.sum(FR_outputs[gs.treeletsR[v], :], axis=0)
                     d.append(h / den)
-            x_new += F.vstack(d)
+            d = F.vstack(d)
+            # ここまで独自の FunctionNode 化したい
+
+            x_new += d
 
         return self.FP(x_new)
 
@@ -316,31 +282,31 @@ class Dataset(dataset.DatasetMixin):
         labels, edges, treelets = g
         nv = len(labels)
 
-        labels = np.array([self._symbol_to_id(l) for l in labels], dtype=np.int32)
-
         out_edges = [[] for _ in range(nv)]
         in_edges  = [[] for _ in range(nv)]
-        for (u,v) in edges:
-            out_edges[u].append(v)
-            in_edges[v].append(u)
-        out_edges = [np.array(vs, dtype=np.int32) for vs in out_edges]
-        in_edges  = [np.array(vs, dtype=np.int32) for vs in in_edges]
+        for (i,(u,v)) in enumerate(edges):
+            out_edges[u].append(i)
+            in_edges[v].append(i)
+        out_edges = [np.array(es, dtype=np.int32) for es in out_edges]
+        in_edges  = [np.array(es, dtype=np.int32) for es in in_edges]
 
         treeletsL = [[] for _ in range(nv)]
         treeletsH = [[] for _ in range(nv)]
         treeletsR = [[] for _ in range(nv)]
-        for (u,v,w) in treelets:
-            treeletsL[u].append((v,w))
-            treeletsH[v].append((u,w))
-            treeletsR[w].append((u,v))
-        treeletsL = [np.array(xs, dtype=np.int32) for xs in treeletsL]
-        treeletsH = [np.array(xs, dtype=np.int32) for xs in treeletsH]
-        treeletsR = [np.array(xs, dtype=np.int32) for xs in treeletsR]
+        for (i,(u,v,w)) in enumerate(treelets):
+            treeletsL[u].append(i)
+            treeletsH[v].append(i)
+            treeletsR[w].append(i)
+        treeletsL = [np.array(ts, dtype=np.int32) for ts in treeletsL]
+        treeletsH = [np.array(ts, dtype=np.int32) for ts in treeletsH]
+        treeletsR = [np.array(ts, dtype=np.int32) for ts in treeletsR]
 
         return GraphData(
-            labels=labels,
+            labels=np.array([self._symbol_to_id(l) for l in labels], dtype=np.int32),
+            edges=np.array(edges, dtype=np.int32),
             in_edges=in_edges,
             out_edges=out_edges,
+            treelets=np.array(treelets, dtype=np.int32),
             treeletsL=treeletsL,
             treeletsH=treeletsH,
             treeletsR=treeletsR
@@ -348,47 +314,62 @@ class Dataset(dataset.DatasetMixin):
 
 GraphData = collections.namedtuple(
     "GraphData",
-    ["labels", "in_edges", "out_edges", "treeletsL", "treeletsH", "treeletsR"]
+    ["labels", "edges", "in_edges", "out_edges", "treelets", "treeletsL", "treeletsH", "treeletsR"]
 )
 
 
 GraphsData = collections.namedtuple(
     "GraphsData",
-    ["node_ranges", "labels", "in_edges", "out_edges", "treeletsL", "treeletsH", "treeletsR"]
+    ["node_ranges", "labels", "edges", "in_edges", "out_edges", "treelets", "treeletsL", "treeletsH", "treeletsR"]
 )
 
 def convert(minibatch, device = None):
     node_offset = 0
     node_ranges = []
+    edge_offset = 0
+    treelet_offset = 0
+
     table = {}
 
     labels = []
+    edges = []
     in_edges = []
     out_edges = []
+    treelets = []
     treeletsL = []
     treeletsH = []
     treeletsR = []
 
     def f(gd):
         nonlocal node_offset
+        nonlocal edge_offset
+        nonlocal treelet_offset
         if id(gd) in table:
             return table[id(gd)]
 
         labels.append(gd.labels)
-        for ns in gd.in_edges:
-            in_edges.append(chainer.dataset.convert.to_device(device, ns + node_offset))
-        for ns in gd.out_edges:
-            out_edges.append(chainer.dataset.convert.to_device(device, ns + node_offset))
+
+        edges.append(gd.edges + node_offset)
+        for es in gd.in_edges:
+            in_edges.append(chainer.dataset.convert.to_device(device, es + edge_offset))
+        for es in gd.out_edges:
+            out_edges.append(chainer.dataset.convert.to_device(device, es + edge_offset))
+
+        treelets.append(gd.treelets + node_offset)
         for tl in gd.treeletsL:
-            treeletsL.append(chainer.dataset.convert.to_device(device, tl + node_offset))
+            treeletsL.append(chainer.dataset.convert.to_device(device, tl + treelet_offset))
         for tl in gd.treeletsH:
-            treeletsH.append(chainer.dataset.convert.to_device(device, tl + node_offset))
+            treeletsH.append(chainer.dataset.convert.to_device(device, tl + treelet_offset))
         for tl in gd.treeletsR:
-            treeletsR.append(chainer.dataset.convert.to_device(device, tl + node_offset))
+            treeletsR.append(chainer.dataset.convert.to_device(device, tl + treelet_offset))
 
         ret = len(node_ranges)
         node_ranges.append( (node_offset, node_offset+len(gd.labels)) )
+
         node_offset += len(gd.labels)
+        edge_offset += len(gd.edges)
+        treelet_offset += len(gd.treelets)
+
         table[id(gd)] = ret
 
         return ret
@@ -398,8 +379,10 @@ def convert(minibatch, device = None):
     gs = GraphsData(
         node_ranges = node_ranges,
         labels      = chainer.dataset.convert.to_device(device, np.concatenate(labels)),
+        edges       = chainer.dataset.convert.to_device(device, np.concatenate(edges)),
         in_edges    = in_edges,
         out_edges   = out_edges,
+        treelets    = chainer.dataset.convert.to_device(device, np.concatenate(treelets)),
         treeletsL   = treeletsL,
         treeletsH   = treeletsH,
         treeletsR   = treeletsR,
