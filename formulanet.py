@@ -6,7 +6,7 @@ from chainer import reporter
 import collections
 import numpy as np
 import re
-import parser_parsy as parser
+import parser_funcparselib
 import tree
 
 
@@ -278,7 +278,8 @@ class Dataset(dataset.DatasetMixin):
         return self._name_to_id[sym]
 
     def _build_graph(self, text):
-        g = tree.tree_to_graph(tree.thm_to_tree(parser.thm.parse(text)))
+        tokens = parser_funcparselib.tokenize(text)
+        g = tree.tree_to_graph(tree.thm_to_tree(parser_funcparselib.thm.parse(tokens)))
         labels, edges, treelets = g
         nv = len(labels)
 
