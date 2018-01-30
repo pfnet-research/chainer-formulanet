@@ -2,7 +2,8 @@ import itertools
 import sys
 import parsy
 import holstep
-import parser
+import parser_pyparsing
+import pyparsing
 
 sys.setrecursionlimit(10000)
 
@@ -12,8 +13,8 @@ for fname in itertools.chain(("holstep/train/%05d" % i for i in range(1,10000)),
     num_error = 0
     for formula in itertools.chain([file.conjecture], file.dependencies, file.examples):
         try:
-            parser.thm.parse(formula.text)
-        except parsy.ParseError as ex:
+            parser_pyparsing.thm.parseString(formula.text, parseAll=True)
+        except pyparsing.ParseException as ex:
             print(ex)
             print(formula.text)
             num_error += 1

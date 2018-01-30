@@ -6,7 +6,7 @@ from chainer import reporter
 import collections
 import numpy as np
 import re
-import parser
+import parser_parsy as parser
 import tree
 
 
