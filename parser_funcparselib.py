@@ -23,7 +23,7 @@ _binder_names = frozenset(["@", "!", "?!", "?", "\\", "lambda"])
 
 tokval = lambda t: t.value
 
-ident = some(lambda t: t.type=='Ident')
+ident = some(lambda t: t.type=='Ident') >> tokval
 binder = some(lambda t: t.type=='Ident' and t.value in _binder_names) >> tokval
 binop = some(lambda t: t.type=='Ident' and t.value in bin_ops) >> tokval
 lparen = skip(some(lambda t: t.type=='LParen'))
