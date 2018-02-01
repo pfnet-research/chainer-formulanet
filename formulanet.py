@@ -367,8 +367,8 @@ class Dataset(dataset.DatasetMixin):
         self._dt_vint = h5py.special_dtype(vlen=np.int32)
 
     def init_db(self):
-        self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=self._dt_vstr)
-        self._h5f.create_dataset("examples_statement", (0,), maxshape=(None,), dtype=np.int32)
+        self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=self._dt_vstr, compression="gzip")
+        self._h5f.create_dataset("examples_statement", (0,), maxshape=(None,), dtype=np.int32, compression="gzip")
 
     def add_file(self, name, fname):
         df = holstep.read_file(fname)
@@ -377,7 +377,7 @@ class Dataset(dataset.DatasetMixin):
         grp_conjecture = grp.create_group("conjecture")
         self._set_graph(grp_conjecture, self._build_graph(df.conjecture.text))
 
-        grp.create_dataset("labels", data=np.array(df.labels, dtype=np.bool))
+        grp.create_dataset("labels", data=np.array(df.labels, dtype=np.bool), compression="gzip")
 
         grp_statements = grp.create_group("statements")
         for (i,s) in enumerate(df.examples):
@@ -392,14 +392,14 @@ class Dataset(dataset.DatasetMixin):
         self._h5f["examples_statement" ][n:] = np.arange(len(df.examples), dtype=np.int32)
 
     def _set_graph(self, grp, g):
-        grp.create_dataset("labels", data=g.labels)
-        grp.create_dataset("edges", data=g.edges)
-        grp.create_dataset("in_edges", data=g.in_edges, dtype=self._dt_vint)
-        grp.create_dataset("out_edges", data=g.out_edges, dtype=self._dt_vint)
-        grp.create_dataset("treelets", data=g.treelets)
-        grp.create_dataset("treeletsL", data=g.treeletsL, dtype=self._dt_vint)
-        grp.create_dataset("treeletsH", data=g.treeletsH, dtype=self._dt_vint)
-        grp.create_dataset("treeletsR", data=g.treeletsR, dtype=self._dt_vint)
+        grp.create_dataset("labels", data=g.labels, compression="gzip")
+        grp.create_dataset("edges", data=g.edges, compression="gzip")
+        grp.create_dataset("in_edges", data=g.in_edges, dtype=self._dt_vint, compression="gzip")
+        grp.create_dataset("out_edges", data=g.out_edges, dtype=self._dt_vint, compression="gzip")
+        grp.create_dataset("treelets", data=g.treelets, compression="gzip")
+        grp.create_dataset("treeletsL", data=g.treeletsL, dtype=self._dt_vint, compression="gzip")
+        grp.create_dataset("treeletsH", data=g.treeletsH, dtype=self._dt_vint, compression="gzip")
+        grp.create_dataset("treeletsR", data=g.treeletsR, dtype=self._dt_vint, compression="gzip")
 
     def _get_graph(self, grp):
         return GraphData(
