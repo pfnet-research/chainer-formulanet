@@ -5,8 +5,11 @@ import chainer.functions as F
 import chainer.links as L
 from chainer import reporter
 import collections
+import h5py
 import numpy as np
 import re
+
+import holstep
 import parser_funcparselib
 import tree
 
@@ -356,21 +359,71 @@ def gather_treelets_to_vertex(gs, FL_outputs, FH_outputs, FR_outputs):
 
 
 class Dataset(dataset.DatasetMixin):
-    def __init__(self, names, datafiles):
+    def __init__(self, names, h5f):
         super().__init__()
         self._name_to_id = {name: i for (i, name) in enumerate(names)}
-        self._examples = []
-        for df in datafiles:
-            g1 = self._build_graph(df.conjecture.text)
-            for (s,y) in zip(df.examples, df.labels):
-                g2 = self._build_graph(s.text)
-                self._examples.append((g1,g2,y))
+        self._h5f = h5f
+        self._dt_vstr = h5py.special_dtype(vlen=str)
+        self._dt_vint = h5py.special_dtype(vlen=np.int32)
+
+    def init_db(self):
+        self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=self._dt_vstr)
+        self._h5f.create_dataset("examples_statement", (0,), maxshape=(None,), dtype=np.int32)
+
+    def add_file(self, name, fname):
+        df = holstep.read_file(fname)
+        grp = self._h5f.create_group(name)
+
+        grp_conjecture = grp.create_group("conjecture")
+        self._set_graph(grp_conjecture, self._build_graph(df.conjecture.text))
+
+        grp.create_dataset("labels", data=np.array(df.labels, dtype=np.bool))
+
+        grp_statements = grp.create_group("statements")
+        for (i,s) in enumerate(df.examples):
+            grp_statement = grp_statements.create_group("%05d" % i)
+            self._set_graph(grp_statement, self._build_graph(s.text))
+
+        n = len(self._h5f["examples_conjecture"])
+        self._h5f["examples_conjecture"].resize((n + len(df.examples),))
+        for i in range(n,n+len(df.examples)):
+            self._h5f["examples_conjecture"][i] = name
+        self._h5f["examples_statement" ].resize((n + len(df.examples),))
+        self._h5f["examples_statement" ][n:] = np.arange(len(df.examples), dtype=np.int32)
+
+    def _set_graph(self, grp, g):
+        grp.create_dataset("labels", data=g.labels)
+        grp.create_dataset("edges", data=g.edges)
+        grp.create_dataset("in_edges", data=g.in_edges, dtype=self._dt_vint)
+        grp.create_dataset("out_edges", data=g.out_edges, dtype=self._dt_vint)
+        grp.create_dataset("treelets", data=g.treelets)
+        grp.create_dataset("treeletsL", data=g.treeletsL, dtype=self._dt_vint)
+        grp.create_dataset("treeletsH", data=g.treeletsH, dtype=self._dt_vint)
+        grp.create_dataset("treeletsR", data=g.treeletsR, dtype=self._dt_vint)
+
+    def _get_graph(self, grp):
+        return GraphData(
+            labels=grp["labels"],
+            edges=grp["edges"],
+            in_edges=grp["in_edges"],
+            out_edges=grp["out_edges"],
+            treelets=grp["treelets"],
+            treeletsL=grp["treeletsL"],
+            treeletsH=grp["treeletsH"],
+            treeletsR=grp["treeletsR"],
+        )
 
     def __len__(self):
-        return len(self._examples)
+        return len(self._h5f["examples_conjecture"])
 
     def get_example(self, i):
-        return self._examples[i]
+        name = self._h5f["examples_conjecture"][i]
+        j = self._h5f["examples_statement"][i]
+        grp = self._h5f[name]
+        g_conj = self._get_graph(grp["conjecture"])
+        g_stmt = self._get_graph(grp["statements"]["%05d" % j])
+        label  = grp["labels"][j]
+        return (g_conj, g_stmt, label)
 
     def _symbol_to_id(self, sym):
         if re.fullmatch(r'_\d+', sym):
@@ -454,19 +507,19 @@ def convert(minibatch, device = None):
 
         labels.append(gd.labels)
 
-        edges.append(gd.edges + node_offset)
+        edges.append(np.array(gd.edges) + node_offset)
         for es in gd.in_edges:
-            in_edges.append(chainer.dataset.convert.to_device(device, es + edge_offset))
+            in_edges.append(chainer.dataset.convert.to_device(device, np.array(es) + edge_offset))
         for es in gd.out_edges:
-            out_edges.append(chainer.dataset.convert.to_device(device, es + edge_offset))
+            out_edges.append(chainer.dataset.convert.to_device(device, np.array(es) + edge_offset))
 
-        treelets.append(gd.treelets + node_offset)
+        treelets.append(np.array(gd.treelets) + node_offset)
         for tl in gd.treeletsL:
-            treeletsL.append(chainer.dataset.convert.to_device(device, tl + treelet_offset))
+            treeletsL.append(chainer.dataset.convert.to_device(device, np.array(tl) + treelet_offset))
         for tl in gd.treeletsH:
-            treeletsH.append(chainer.dataset.convert.to_device(device, tl + treelet_offset))
+            treeletsH.append(chainer.dataset.convert.to_device(device, np.array(tl) + treelet_offset))
         for tl in gd.treeletsR:
-            treeletsR.append(chainer.dataset.convert.to_device(device, tl + treelet_offset))
+            treeletsR.append(chainer.dataset.convert.to_device(device, np.array(tl) + treelet_offset))
 
         ret = len(node_ranges)
         node_ranges.append( (node_offset, node_offset+len(gd.labels)) )

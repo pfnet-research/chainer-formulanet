@@ -13,6 +13,7 @@ from chainer import optimizers
 from chainer import reporter
 from chainer import training
 from chainer.training import extensions
+import h5py
 import numpy as np
 import os
 import sys
@@ -71,19 +72,8 @@ def main():
         print('')
 
     if not args.chainermn or comm.rank==0:
-        train = []
-        for i in range(1,10000):
-        #for i in [1]:
-            fname = "%s/train/%05d" % (args.dataset, i)
-            train.append(holstep.read_file(fname))
-        train = formulanet.Dataset(symbols.symbols, train)
-
-        test = []
-        for i in range(1,1412):
-        #for i in [1]:
-            fname = "%s/test/%04d" % (args.dataset, i)
-            test.append(holstep.read_file(fname))
-        test = formulanet.Dataset(symbols.symbols, test)
+        train = formulanet.Dataset(symbols.symbols, h5py.File(os.path.join(args.dataset, "train.h5"), 'r'))
+        test  = formulanet.Dataset(symbols.symbols, h5py.File(os.path.join(args.dataset, "test.h5"),  'r'))
     else:
         train, test = None, None
 
