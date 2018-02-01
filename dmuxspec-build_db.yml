@@ -6,7 +6,7 @@ features:
 - pip:funcparserlib==0.3.6
 hardware:
 - cpu==2
-- ram==4096
+- ram==65536
 - disk==10000
 datasets:
 - holstep==1 @ /home/user/holstep
