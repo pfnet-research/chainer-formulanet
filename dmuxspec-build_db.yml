@@ -7,6 +7,6 @@ features:
 hardware:
 - cpu==2
 - ram==65536
-- disk==10000
+- disk==50000
 datasets:
 - holstep==1 @ /home/user/holstep
