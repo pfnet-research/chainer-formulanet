@@ -3,7 +3,7 @@ os: ubuntu==16.04
 features:
 - python==3
 - chainer==3.0.0
-- pip:parsy==1.1.0
+- pip:funcparserlib==0.3.6
 hardware:
 - cpu==2
 - ram==4096
