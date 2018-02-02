@@ -71,15 +71,25 @@ def main():
         print('# steps: {}'.format(args.steps))
         print('')
 
+    train_h5f = h5py.File(os.path.join(args.dataset, "train.h5"), 'r')
+    test_h5f = h5py.File(os.path.join(args.dataset, "test.h5"),  'r')
+
     if not args.chainermn or comm.rank==0:
-        train = formulanet.Dataset(symbols.symbols, h5py.File(os.path.join(args.dataset, "train.h5"), 'r'))
-        test  = formulanet.Dataset(symbols.symbols, h5py.File(os.path.join(args.dataset, "test.h5"),  'r'))
+        train = formulanet.Dataset(symbols.symbols, train_h5f)
+        test  = formulanet.Dataset(symbols.symbols, test_h5f)
     else:
         train, test = None, None
 
     if args.chainermn:
+        # XXX: h5py.File cannot be distributed
+        if comm.rank==0:
+            train._h5f = None
+            test._h5f = None
         train = chainermn.scatter_dataset(train, comm)
         test = chainermn.scatter_dataset(test, comm)
+        # We assume train and test are chainer.datasets.SubDataset.
+        train._dataset._h5f = train_h5f
+        test._dataset._h5f = test_h5f
     
     train_iter = iterators.SerialIterator(train, args.batchsize)
     test_iter = iterators.SerialIterator(test, args.batchsize, repeat=False, shuffle=False)

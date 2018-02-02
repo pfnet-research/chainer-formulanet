@@ -363,11 +363,10 @@ class Dataset(dataset.DatasetMixin):
         super().__init__()
         self._name_to_id = {name: i for (i, name) in enumerate(names)}
         self._h5f = h5f
-        self._dt_vstr = h5py.special_dtype(vlen=str)
-        self._dt_vint = h5py.special_dtype(vlen=np.int32)
+        self._len = int(len(self._h5f["examples_conjecture"]))
 
     def init_db(self):
-        self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=self._dt_vstr, compression="gzip")
+        self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=h5py.special_dtype(vlen=str), compression="gzip")
         self._h5f.create_dataset("examples_statement", (0,), maxshape=(None,), dtype=np.int32, compression="gzip")
 
     def add_file(self, name, fname):
@@ -390,16 +389,18 @@ class Dataset(dataset.DatasetMixin):
             self._h5f["examples_conjecture"][i] = name
         self._h5f["examples_statement" ].resize((n + len(df.examples),))
         self._h5f["examples_statement" ][n:] = np.arange(len(df.examples), dtype=np.int32)
+        self._len += len(df.examples)
 
     def _set_graph(self, grp, g):
+        dt_vint = h5py.special_dtype(vlen=np.int32)
         grp.create_dataset("labels", data=g.labels, compression="gzip")
         grp.create_dataset("edges", data=g.edges, compression="gzip")
-        grp.create_dataset("in_edges", data=g.in_edges, dtype=self._dt_vint, compression="gzip")
-        grp.create_dataset("out_edges", data=g.out_edges, dtype=self._dt_vint, compression="gzip")
+        grp.create_dataset("in_edges", data=g.in_edges, dtype=dt_vint, compression="gzip")
+        grp.create_dataset("out_edges", data=g.out_edges, dtype=dt_vint, compression="gzip")
         grp.create_dataset("treelets", data=g.treelets, compression="gzip")
-        grp.create_dataset("treeletsL", data=g.treeletsL, dtype=self._dt_vint, compression="gzip")
-        grp.create_dataset("treeletsH", data=g.treeletsH, dtype=self._dt_vint, compression="gzip")
-        grp.create_dataset("treeletsR", data=g.treeletsR, dtype=self._dt_vint, compression="gzip")
+        grp.create_dataset("treeletsL", data=g.treeletsL, dtype=dt_vint, compression="gzip")
+        grp.create_dataset("treeletsH", data=g.treeletsH, dtype=dt_vint, compression="gzip")
+        grp.create_dataset("treeletsR", data=g.treeletsR, dtype=dt_vint, compression="gzip")
 
     def _get_graph(self, grp):
         return GraphData(
@@ -414,7 +415,7 @@ class Dataset(dataset.DatasetMixin):
         )
 
     def __len__(self):
-        return len(self._h5f["examples_conjecture"])
+        return self._len
 
     def get_example(self, i):
         name = self._h5f["examples_conjecture"][i]
