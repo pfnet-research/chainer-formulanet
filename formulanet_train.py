@@ -51,11 +51,17 @@ def main():
     parser.add_argument('--preserve-order', action='store_true', help='Use order-preserving model')
     parser.add_argument('--steps', type=int, default="3", help='Number of update steps')
 
+    parser.add_argument('--run-id', type=str, default="formulanet_train",
+                        help='ID of the task name')
+    parser.add_argument('--checkpointer-path', type=str, default=None,
+                        help='Path for chainermn.create_multi_node_checkpointer')
+
     args = parser.parse_args()
     args.gpus = list(map(int, args.gpus.split(',')))
 
     if args.chainermn:
         import chainermn
+        from chainermn.extensions import create_multi_node_checkpointer
         comm = chainermn.create_communicator()
         args.gpus = [comm.intra_rank]
 
@@ -131,6 +137,13 @@ def main():
         trainer.extend(extensions.ProgressBar(update_interval = 10))
         trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
         trainer.extend(extensions.snapshot_object(model, filename='model_epoch-{.updater.epoch}'))
+
+    if args.chainermn:
+        checkpointer = create_multi_node_checkpointer(args.run_id, comm, path=args.checkpointer_path)
+        checkpointer.maybe_load(trainer, optimizer)
+        print("Rank", comm.rank, ": (Re)Starting from (epoch, iter) =",
+              (trainer.updater.epoch, trainer.updater.iteration))
+        trainer.extend(checkpointer, trigger=(100, 'iteration'))
 
     if args.resume:
         # Resume from a snapshot

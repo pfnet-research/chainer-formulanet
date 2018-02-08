@@ -20,3 +20,4 @@ hardware:
 - ib==1
 datasets:
 - formulanet-holstep-hdf5==1 @ /home/user/holstep
+snapshot_dir: /home/user/snapshots
