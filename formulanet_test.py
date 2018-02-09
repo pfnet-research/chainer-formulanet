@@ -18,6 +18,7 @@ import numpy as np
 import os
 import pandas as pd
 import sys
+from tqdm import tqdm
 
 import formulanet
 import holstep
@@ -69,11 +70,13 @@ def main():
             expected = []
             logits = []
 
-            for batch in test_iter:
-                gs, tuples = formulanet.convert(batch, args.gpu)
-                logits1, _loss = model._forward(gs, tuples)
-                logits.append(chainer.cuda.to_cpu(logits1.data))
-                expected.extend(1 if y else 0 for (conj, stmt, y) in tuples)
+            with tqdm(total=len(test)) as pbar:
+                for batch in test_iter:
+                    gs, tuples = formulanet.convert(batch, args.gpu)
+                    logits1, _loss = model._forward(gs, tuples)
+                    logits.append(chainer.cuda.to_cpu(logits1.data))
+                    expected.extend(1 if y else 0 for (conj, stmt, y) in tuples)
+                    pbar.update(len(batch))
 
             logits = np.concatenate(logits)
             expected = np.array(expected, dtype=np.int32)
