@@ -6,14 +6,15 @@ Chainer implementation of FormulaNet [1].
 
 * Python 3
 * Chainer
-* parsy
+* funcparserlib
 
 ## Usage
 
 ```
 $ wget http://cl-informatik.uibk.ac.at/cek/holstep/holstep.tgz
 $ tar zxf holstep.tgz
-$ python formulanet_train.py
+$ python build_db.py
+$ python formulanet_train.py --dataset resullts
 ```
 
 ## References
