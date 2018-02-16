@@ -13,7 +13,7 @@ features:
 - pip:matplotlib==2.0.2
 - apt:python3-tk # required by matplotlib
 hardware:
-- cpu==2
+- cpu==1
 - gpu==1
 - ram==8192
 - disk==10000
