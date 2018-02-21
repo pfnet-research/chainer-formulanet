@@ -3,7 +3,7 @@ os: ubuntu==16.04
 features:
 - python==3
 - chainer==3.3.0
-- chainermn==1.1.0
+- chainermn==1.2.0
 - cuda==8.0
 - cupy==2.3.0
 - cudnn==5.1
