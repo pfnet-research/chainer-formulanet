@@ -76,32 +76,11 @@ class Block3(chainer.Chain):
         h = F.relu(self.bn2(self.fc2(h)))
         return h
 
-class Classifier(chainer.Chain):
-    def __init__(self, conditional = True):
+class Step(chainer.Chain):
+    def __init__(self, order_preserving):
         super().__init__()
-        self._conditional = conditional
-        with self.init_scope():
-            self.fc1 = L.Linear(2*DIM if conditional else DIM, DIM)
-            self.bn  = L.BatchNormalization(DIM)
-            self.fc2 = L.Linear(DIM, 2)
-
-    def __call__(self, *args):
-        if self._conditional:
-            assert len(args) == 2
-        else:
-            assert len(args) == 1
-        return self.fc2(F.relu(self.bn(self.fc1(F.concat(args)))))
-
-class FormulaNet(chainer.Chain):
-    def __init__(self, vocab_size, steps, order_preserving, conditional):
-        super().__init__()
-        self._vocab_size = vocab_size
-        self._steps = steps
         self._order_preserving = order_preserving
-        self._conditional = conditional
-
         with self.init_scope():
-            self.embed_id = L.EmbedID(vocab_size, DIM)
             self.FP = FP()
             self.FI = Block2()
             self.FO = Block2()
@@ -109,81 +88,8 @@ class FormulaNet(chainer.Chain):
                 self.FH = Block3()
                 self.FL = Block3()
                 self.FR = Block3()
-            self.classifier = Classifier(conditional)
 
-    def __call__(self, gs, minibatch):
-        #import time
-        #from datetime import datetime
-        #start = time.time()
-        #print("__call__ enter: " + str(datetime.now()))
-        
-        predicted, loss = self._forward(gs, minibatch)
-        self.loss = loss
-        reporter.report({'loss': self.loss}, self)
-
-        with chainer.cuda.get_device_from_array(predicted.data):
-            expected = self.xp.array([1 if y else 0 for (conj, stmt, y) in minibatch], np.int32)
-        self.accuracy = F.accuracy(predicted, expected)
-        reporter.report({'accuracy': self.accuracy}, self)
-
-        #print("__call__ exit: " + str(datetime.now()))
-        #print("elapsed_time: {0} sec".format(time.time() - start))
-
-        return loss
-
-    def _forward(self, gs, minibatch):
-        stmt_embeddings = []
-        conj_embeddings = []
-        labels = []
-
-        def collect_embedding():
-            es = [self._compute_graph_embedding(gs, x, i) for i in range(len(gs.node_ranges))]
-            for (conj, stmt, y) in minibatch:
-                stmt_embeddings.append(es[stmt])
-                if self._conditional:
-                    conj_embeddings.append(es[conj])
-                labels.append(1 if y else 0)
-
-        x = self._initial_nodes_embedding(gs)
-        collect_embedding()
-        for i in range(self._steps):
-            # print("step " + str(i))
-            x = self._update_nodes_embedding(gs, x)
-            collect_embedding()
-
-        stmt_embeddings = F.vstack(stmt_embeddings)
-        if self._conditional:
-            conj_embeddings = F.vstack(conj_embeddings)
-
-        if self._conditional:
-            predicted = self.classifier(conj_embeddings, stmt_embeddings)
-        else:
-            predicted = self.classifier(stmt_embeddings)
-
-        with chainer.cuda.get_device_from_array(predicted.data):
-            labels = self.xp.array(labels, dtype=np.int32)
-
-        return predicted[-len(minibatch):], F.softmax_cross_entropy(predicted, labels)
-
-    def predict(self, gs, conj, stmt):
-        return (F.argmax(logit(gs, conj, stmt)) > 0)
-
-    def logit(self, gs, conj, stmt):
-        x = self._initial_nodes_embedding(gs)
-        for i in range(self._steps):
-            x = self._update_nodes_embedding(gs, x)
-
-        stmt_embedding = self._compute_graph_embedding(gs, x, stmt)
-        if self._conditional:
-            conj_emedding = self._compute_graph_embedding(gs, x, conj)
-            return self.classifier(conj_embedding, stmt_embedding)[0]
-        else:
-            return self.classifier(stmt_embedding)[0]
-
-    def _initial_nodes_embedding(self, gs):
-        return self.embed_id(gs.labels)
-
-    def _update_nodes_embedding(self, gs, x):
+    def __call__(self, gs, x):
         x_new = x
 
         # dirty optimization
@@ -227,6 +133,107 @@ class FormulaNet(chainer.Chain):
             x_new += d
 
         return self.FP(x_new)
+
+class Classifier(chainer.Chain):
+    def __init__(self, conditional = True):
+        super().__init__()
+        self._conditional = conditional
+        with self.init_scope():
+            self.fc1 = L.Linear(2*DIM if conditional else DIM, DIM)
+            self.bn  = L.BatchNormalization(DIM)
+            self.fc2 = L.Linear(DIM, 2)
+
+    def __call__(self, *args):
+        if self._conditional:
+            assert len(args) == 2
+        else:
+            assert len(args) == 1
+        return self.fc2(F.relu(self.bn(self.fc1(F.concat(args)))))
+
+class FormulaNet(chainer.Chain):
+    def __init__(self, vocab_size, steps, order_preserving, conditional):
+        super().__init__()
+        self._vocab_size = vocab_size
+        self._steps = steps
+        self._order_preserving = order_preserving
+        self._conditional = conditional
+
+        with self.init_scope():
+            self.embed_id = L.EmbedID(vocab_size, DIM)
+            self.steps = chainer.ChainList(*[Step(order_preserving) for _ in range(steps)])
+            self.classifier = Classifier(conditional)
+
+    def __call__(self, gs, minibatch):
+        #import time
+        #from datetime import datetime
+        #start = time.time()
+        #print("__call__ enter: " + str(datetime.now()))
+        
+        predicted, loss = self._forward(gs, minibatch)
+        self.loss = loss
+        reporter.report({'loss': self.loss}, self)
+
+        with chainer.cuda.get_device_from_array(predicted.data):
+            expected = self.xp.array([1 if y else 0 for (conj, stmt, y) in minibatch], np.int32)
+        self.accuracy = F.accuracy(predicted, expected)
+        reporter.report({'accuracy': self.accuracy}, self)
+
+        #print("__call__ exit: " + str(datetime.now()))
+        #print("elapsed_time: {0} sec".format(time.time() - start))
+
+        return loss
+
+    def _forward(self, gs, minibatch):
+        stmt_embeddings = []
+        conj_embeddings = []
+        labels = []
+
+        def collect_embedding():
+            es = [self._compute_graph_embedding(gs, x, i) for i in range(len(gs.node_ranges))]
+            for (conj, stmt, y) in minibatch:
+                stmt_embeddings.append(es[stmt])
+                if self._conditional:
+                    conj_embeddings.append(es[conj])
+                labels.append(1 if y else 0)
+
+        x = self._initial_nodes_embedding(gs)
+        collect_embedding()
+        for (i,step) in enumerate(self.steps):
+            # print("step " + str(i))
+            x = step(gs, x)
+            collect_embedding()
+
+        stmt_embeddings = F.vstack(stmt_embeddings)
+        if self._conditional:
+            conj_embeddings = F.vstack(conj_embeddings)
+
+        if self._conditional:
+            predicted = self.classifier(conj_embeddings, stmt_embeddings)
+        else:
+            predicted = self.classifier(stmt_embeddings)
+
+        with chainer.cuda.get_device_from_array(predicted.data):
+            labels = self.xp.array(labels, dtype=np.int32)
+
+        return predicted[-len(minibatch):], F.softmax_cross_entropy(predicted, labels)
+
+    def predict(self, gs, conj, stmt):
+        return (F.argmax(logit(gs, conj, stmt)) > 0)
+
+    def logit(self, gs, conj, stmt):
+        x = self._initial_nodes_embedding(gs)
+        for (i, step) in enumerate(self.steps):
+            x = step(gs, x)
+
+        stmt_embedding = self._compute_graph_embedding(gs, x, stmt)
+        if self._conditional:
+            conj_emedding = self._compute_graph_embedding(gs, x, conj)
+            return self.classifier(conj_embedding, stmt_embedding)[0]
+        else:
+            return self.classifier(stmt_embedding)[0]
+
+    def _initial_nodes_embedding(self, gs):
+        return self.embed_id(gs.labels)
 
     def _compute_graph_embedding(self, gs, x, stmt):
         (beg,end) = gs.node_ranges[stmt]
