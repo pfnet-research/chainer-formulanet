@@ -60,6 +60,9 @@ def main():
     args.gpus = list(map(int, args.gpus.split(',')))
 
     if args.chainermn:
+        # matplotlib.font_manager should be imported before mpi4py.MPI
+        # to avoid MPI issue with fork() system call.
+        import matplotlib.font_manager
         import chainermn
         from chainermn.extensions import create_multi_node_checkpointer
         comm = chainermn.create_communicator()
