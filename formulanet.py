@@ -8,6 +8,7 @@ import collections
 import h5py
 import numpy as np
 import re
+import sparse_matmul
 
 import holstep
 import parser_funcparselib
@@ -104,7 +105,36 @@ class Step(chainer.Chain):
         FI_outputs = self.FI(FI_inputs)
         FO_outputs = self.FO(FO_inputs)
 
-        d = gather_edges_to_vertex(gs, FI_outputs, FO_outputs)
+        MI_data = []
+        MI_row = []
+        MI_col = []
+        MO_data = []
+        MO_row = []
+        MO_col = []
+        for v in range(len(gs.labels)):
+            den = (len(gs.in_edges[v]) + len(gs.out_edges[v]))
+            for e in gs.in_edges[v]:
+                MI_data.append(1.0 / den)
+                MI_row.append(v)
+                MI_col.append(e)
+            for e in gs.out_edges[v]:
+                MO_data.append(1.0 / den)
+                MO_row.append(v)
+                MO_col.append(e)
+        MI = sparse_matmul.sparse_coo_matrix(
+            self.xp.array(MI_data, dtype=np.float32),
+            self.xp.array(MI_row, dtype=np.float32),
+            self.xp.array(MI_col, dtype=np.float32),
+            shape=(len(gs.labels), len(gs.edges)))
+        MO = sparse_matmul.sparse_coo_matrix(
+            self.xp.array(MO_data, dtype=np.float32),
+            self.xp.array(MO_row, dtype=np.float32),
+            self.xp.array(MO_col, dtype=np.float32),
+            shape=(len(gs.labels), len(gs.edges)))
+        d = sparse_matmul.sparse_matmul(MI, FI_outputs) + \
+            sparse_matmul.sparse_matmul(MO, FO_outputs)
+
+        #d = gather_edges_to_vertex(gs, FI_outputs, FO_outputs)
 
         x_new += d
 
@@ -128,7 +158,49 @@ class Step(chainer.Chain):
             FH_outputs = self.FH(FH_inputs)
             FR_outputs = self.FR(FR_inputs)
 
-            d = gather_treelets_to_vertex(gs, FL_outputs, FH_outputs, FR_outputs)
+            #d = gather_treelets_to_vertex(gs, FL_outputs, FH_outputs, FR_outputs)
+
+            ML_data = []
+            ML_row  = []
+            ML_col  = []
+            MH_data = []
+            MH_row  = []
+            MH_col  = []
+            MR_data = []
+            MR_row  = []
+            MR_col  = []
+            for v in range(len(gs.labels)):
+                den = len(gs.treeletsL[v]) + len(gs.treeletsH[v]) + len(gs.treeletsR[v])
+                for t in gs.treeletsL[v]:
+                    ML_data.append(1.0 / den)
+                    ML_row.append(v)
+                    ML_col.append(t)
+                for t in gs.treeletsH[v]:
+                    MH_data.append(1.0 / den)
+                    MH_row.append(v)
+                    MH_col.append(t)
+                for t in gs.treeletsR[v]:
+                    MR_data.append(1.0 / den)
+                    MR_row.append(v)
+                    MR_col.append(t)
+            ML = sparse_matmul.sparse_coo_matrix(
+                self.xp.array(ML_data, dtype=np.float32),
+                self.xp.array(ML_row, dtype=np.float32),
+                self.xp.array(ML_col, dtype=np.float32),
+                shape=(len(gs.labels), len(gs.treelets)))
+            MH = sparse_matmul.sparse_coo_matrix(
+                self.xp.array(MH_data, dtype=np.float32),
+                self.xp.array(MH_row, dtype=np.float32),
+                self.xp.array(MH_col, dtype=np.float32),
+                shape=(len(gs.labels), len(gs.treelets)))
+            MR = sparse_matmul.sparse_coo_matrix(
+                self.xp.array(MR_data, dtype=np.float32),
+                self.xp.array(MR_row, dtype=np.float32),
+                self.xp.array(MR_col, dtype=np.float32),
+                shape=(len(gs.labels), len(gs.treelets)))
+            d = sparse_matmul.sparse_matmul(ML, FL_outputs) + \
+                sparse_matmul.sparse_matmul(MH, FH_outputs) + \
+                sparse_matmul.sparse_matmul(MR, FR_outputs)
 
             x_new += d
 
