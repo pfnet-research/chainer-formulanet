@@ -105,36 +105,8 @@ class Step(chainer.Chain):
         FI_outputs = self.FI(FI_inputs)
         FO_outputs = self.FO(FO_inputs)
 
-        MI_data = []
-        MI_row = []
-        MI_col = []
-        MO_data = []
-        MO_row = []
-        MO_col = []
-        for v in range(len(gs.labels)):
-            den = (len(gs.in_edges[v]) + len(gs.out_edges[v]))
-            for e in gs.in_edges[v]:
-                MI_data.append(1.0 / den)
-                MI_row.append(v)
-                MI_col.append(e)
-            for e in gs.out_edges[v]:
-                MO_data.append(1.0 / den)
-                MO_row.append(v)
-                MO_col.append(e)
-        MI = sparse_matmul.sparse_coo_matrix(
-            self.xp.array(MI_data, dtype=np.float32),
-            self.xp.array(MI_row, dtype=np.float32),
-            self.xp.array(MI_col, dtype=np.float32),
-            shape=(len(gs.labels), len(gs.edges)))
-        MO = sparse_matmul.sparse_coo_matrix(
-            self.xp.array(MO_data, dtype=np.float32),
-            self.xp.array(MO_row, dtype=np.float32),
-            self.xp.array(MO_col, dtype=np.float32),
-            shape=(len(gs.labels), len(gs.edges)))
-        d = sparse_matmul.sparse_matmul(MI, FI_outputs) + \
-            sparse_matmul.sparse_matmul(MO, FO_outputs)
-
-        #d = gather_edges_to_vertex(gs, FI_outputs, FO_outputs)
+        d = sparse_matmul.sparse_matmul(gs.MI, FI_outputs) + \
+            sparse_matmul.sparse_matmul(gs.MO, FO_outputs)
 
         x_new += d
 
@@ -158,49 +130,9 @@ class Step(chainer.Chain):
             FH_outputs = self.FH(FH_inputs)
             FR_outputs = self.FR(FR_inputs)
 
-            #d = gather_treelets_to_vertex(gs, FL_outputs, FH_outputs, FR_outputs)
-
-            ML_data = []
-            ML_row  = []
-            ML_col  = []
-            MH_data = []
-            MH_row  = []
-            MH_col  = []
-            MR_data = []
-            MR_row  = []
-            MR_col  = []
-            for v in range(len(gs.labels)):
-                den = len(gs.treeletsL[v]) + len(gs.treeletsH[v]) + len(gs.treeletsR[v])
-                for t in gs.treeletsL[v]:
-                    ML_data.append(1.0 / den)
-                    ML_row.append(v)
-                    ML_col.append(t)
-                for t in gs.treeletsH[v]:
-                    MH_data.append(1.0 / den)
-                    MH_row.append(v)
-                    MH_col.append(t)
-                for t in gs.treeletsR[v]:
-                    MR_data.append(1.0 / den)
-                    MR_row.append(v)
-                    MR_col.append(t)
-            ML = sparse_matmul.sparse_coo_matrix(
-                self.xp.array(ML_data, dtype=np.float32),
-                self.xp.array(ML_row, dtype=np.float32),
-                self.xp.array(ML_col, dtype=np.float32),
-                shape=(len(gs.labels), len(gs.treelets)))
-            MH = sparse_matmul.sparse_coo_matrix(
-                self.xp.array(MH_data, dtype=np.float32),
-                self.xp.array(MH_row, dtype=np.float32),
-                self.xp.array(MH_col, dtype=np.float32),
-                shape=(len(gs.labels), len(gs.treelets)))
-            MR = sparse_matmul.sparse_coo_matrix(
-                self.xp.array(MR_data, dtype=np.float32),
-                self.xp.array(MR_row, dtype=np.float32),
-                self.xp.array(MR_col, dtype=np.float32),
-                shape=(len(gs.labels), len(gs.treelets)))
-            d = sparse_matmul.sparse_matmul(ML, FL_outputs) + \
-                sparse_matmul.sparse_matmul(MH, FH_outputs) + \
-                sparse_matmul.sparse_matmul(MR, FR_outputs)
+            d = sparse_matmul.sparse_matmul(gs.ML, FL_outputs) + \
+                sparse_matmul.sparse_matmul(gs.MH, FH_outputs) + \
+                sparse_matmul.sparse_matmul(gs.MR, FR_outputs)
 
             x_new += d
 
@@ -310,131 +242,6 @@ class FormulaNet(chainer.Chain):
     def _compute_graph_embedding(self, gs, x, stmt):
         (beg,end) = gs.node_ranges[stmt]
         return F.max(x[beg:end], axis=0, keepdims=True)
-
-
-class GatherEdgesToVertex(function_node.FunctionNode):
-    def __init__(self, gs):
-        self.gs = gs
-
-    def check_type_forward(self, in_types):
-        chainer.utils.type_check.expect(
-            in_types.size() == 2,
-            in_types[0].dtype.kind == 'f',
-            in_types[1].dtype.kind == 'f',
-            in_types[0].shape == (len(self.gs.edges), DIM),
-            in_types[1].shape == (len(self.gs.edges), DIM),
-        )
-
-    def forward(self, inputs):
-        xp = chainer.cuda.get_array_module(*inputs)
-        FI_outputs, FO_outputs = inputs
-        ret = xp.zeros((len(self.gs.labels), DIM), np.float32)
-        for v in range(len(self.gs.labels)):
-            den = len(self.gs.in_edges[v]) + len(self.gs.out_edges[v])
-            xp.sum(FI_outputs[self.gs.in_edges[v],  :], axis=0, out=ret[v,:])
-            xp.sum(FO_outputs[self.gs.out_edges[v], :], axis=0, out=ret[v,:])
-            xp.divide(ret[v,:], den, out=ret[v,:])
-        return ret,
-
-    # XXX: This is not differentiable
-    def backward(self, indexes, grad_outputs):
-        gy, = grad_outputs
-        gy = gy.data
-        xp = chainer.cuda.get_array_module(gy)
-        gFI = xp.zeros((len(self.gs.edges), DIM), np.float32)
-        gFO = xp.zeros((len(self.gs.edges), DIM), np.float32)
-        for v in range(len(self.gs.labels)):
-            den = len(self.gs.in_edges[v]) + len(self.gs.out_edges[v])
-            g = gy[v] / den
-            if xp is np:
-                np.add.at(gFI, self.gs.in_edges[v], g)
-                np.add.at(gFO, self.gs.out_edges[v], g)
-            else:
-                gFI.scatter_add(self.gs.in_edges[v], g)
-                gFO.scatter_add(self.gs.out_edges[v], g)
-        return chainer.Variable(gFI), chainer.Variable(gFO)
-
-def gather_edges_to_vertex(gs, FI_outputs, FO_outputs):
-    if True:
-        y, = GatherEdgesToVertex(gs).apply((FI_outputs, FO_outputs))
-        return y
-    else:
-        d = []
-        for v in range(len(self.gs.labels)):
-            h = F.sum(FI_outputs[self.gs.in_edges[v], :], axis=0) + \
-                F.sum(FO_outputs[self.gs.out_edges[v],:], axis=0)
-            h /= (len(self.gs.in_edges[v]) + len(self.gs.out_edges[v]))
-            d.append(h)
-        return F.vstack(d)
-
-
-class GatherTreeletsToVertex(function_node.FunctionNode):
-    def __init__(self, gs):
-        self.gs = gs
-
-    def check_type_forward(self, in_types):
-        chainer.utils.type_check.expect(
-            in_types.size() == 3,
-            in_types[0].dtype.kind == 'f',
-            in_types[1].dtype.kind == 'f',
-            in_types[2].dtype.kind == 'f',
-            in_types[0].shape == (len(self.gs.treelets), DIM),
-            in_types[1].shape == (len(self.gs.treelets), DIM),
-            in_types[2].shape == (len(self.gs.treelets), DIM),
-        )
-
-    def forward(self, inputs):
-        xp = chainer.cuda.get_array_module(*inputs)
-        FL_outputs, FH_outputs, FR_outputs = inputs
-        ret = xp.zeros((len(self.gs.labels), DIM), np.float32)
-        for v in range(len(self.gs.labels)):
-            den = len(self.gs.treeletsL[v]) + len(self.gs.treeletsH[v]) + len(self.gs.treeletsR[v])
-            if den != 0:
-                xp.sum(FL_outputs[self.gs.treeletsL[v], :], axis=0, out=ret[v,:])
-                xp.sum(FH_outputs[self.gs.treeletsH[v], :], axis=0, out=ret[v,:])
-                xp.sum(FR_outputs[self.gs.treeletsR[v], :], axis=0, out=ret[v,:])
-                xp.divide(ret[v,:], den, out=ret[v,:])
-        return ret,
-
-    # XXX: This is not differentiable
-    def backward(self, indexes, grad_outputs):
-        gy, = grad_outputs
-        gy = gy.data
-        xp = chainer.cuda.get_array_module(gy)
-        gFL = xp.zeros((len(self.gs.treelets), DIM), np.float32)
-        gFH = xp.zeros((len(self.gs.treelets), DIM), np.float32)
-        gFR = xp.zeros((len(self.gs.treelets), DIM), np.float32)
-        for v in range(len(self.gs.labels)):
-            d = len(self.gs.in_edges[v]) + len(self.gs.out_edges[v])
-            g = gy[v] / d
-            if xp is np:
-                np.add.at(gFL, self.gs.treeletsL[v], g)
-                np.add.at(gFH, self.gs.treeletsH[v], g)
-                np.add.at(gFR, self.gs.treeletsR[v], g)
-            else:
-                gFL.scatter_add(self.gs.treeletsL[v], g)
-                gFH.scatter_add(self.gs.treeletsH[v], g)
-                gFR.scatter_add(self.gs.treeletsR[v], g)
-        return chainer.Variable(gFL), chainer.Variable(gFH), chainer.Variable(gFR)
-
-def gather_treelets_to_vertex(gs, FL_outputs, FH_outputs, FR_outputs):
-    if True:
-        y, = GatherTreeletsToVertex(gs).apply((FL_outputs, FH_outputs, FR_outputs))
-        return y
-    else:
-        with chainer.cuda.get_device_from_array(FL_outputs.data):
-            zeros_DIM = self.xp.zeros(DIM, dtype=np.float32)
-        d = []
-        for v in range(len(gs.labels)):
-            den = len(gs.treeletsL[v]) + len(gs.treeletsH[v]) + len(gs.treeletsR[v])
-            if den == 0:
-                d.append(zeros_DIM)
-            else:
-                h = F.sum(FL_outputs[gs.treeletsL[v], :], axis=0) + \
-                    F.sum(FH_outputs[gs.treeletsH[v], :], axis=0) + \
-                    F.sum(FR_outputs[gs.treeletsR[v], :], axis=0)
-                d.append(h / den)
-        return F.vstack(d)
 
 
 class Dataset(dataset.DatasetMixin):
@@ -558,7 +365,7 @@ GraphData = collections.namedtuple(
 
 GraphsData = collections.namedtuple(
     "GraphsData",
-    ["node_ranges", "labels", "edges", "in_edges", "out_edges", "treelets", "treeletsL", "treeletsH", "treeletsR"]
+    ["node_ranges", "labels", "edges", "treelets", "MI", "MO", "ML", "MH", "MR"]
 )
 
 def convert(minibatch, device = None):
@@ -571,12 +378,23 @@ def convert(minibatch, device = None):
 
     labels = []
     edges = []
-    in_edges = []
-    out_edges = []
     treelets = []
-    treeletsL = []
-    treeletsH = []
-    treeletsR = []
+
+    MI_data = []
+    MI_row = []
+    MI_col = []
+    MO_data = []
+    MO_row = []
+    MO_col = []
+    ML_data = []
+    ML_row = []
+    ML_col = []
+    MH_data = []
+    MH_row = []
+    MH_col = []
+    MR_data = []
+    MR_row = []
+    MR_col = []
 
     def f(gd):
         nonlocal node_offset
@@ -588,18 +406,34 @@ def convert(minibatch, device = None):
         labels.append(gd.labels)
 
         edges.append(np.array(gd.edges) + node_offset)
-        for es in gd.in_edges:
-            in_edges.append(chainer.dataset.convert.to_device(device, np.array(es) + edge_offset))
-        for es in gd.out_edges:
-            out_edges.append(chainer.dataset.convert.to_device(device, np.array(es) + edge_offset))
+        for v in range(len(gd.labels)):
+            den = (len(gd.in_edges[v]) + len(gd.out_edges[v]))
+            for e in gd.in_edges[v]:
+                MI_data.append(1.0 / den)
+                MI_row.append(node_offset + v)
+                MI_col.append(edge_offset + e)
+            for e in gd.out_edges[v]:
+                MO_data.append(1.0 / den)
+                MO_row.append(node_offset + v)
+                MO_col.append(edge_offset + e)
 
         treelets.append(np.array(gd.treelets) + node_offset)
-        for tl in gd.treeletsL:
-            treeletsL.append(chainer.dataset.convert.to_device(device, np.array(tl) + treelet_offset))
-        for tl in gd.treeletsH:
-            treeletsH.append(chainer.dataset.convert.to_device(device, np.array(tl) + treelet_offset))
-        for tl in gd.treeletsR:
-            treeletsR.append(chainer.dataset.convert.to_device(device, np.array(tl) + treelet_offset))
+        for v in range(len(gd.labels)):
+            den = len(gd.treeletsL[v]) + len(gd.treeletsH[v]) + len(gd.treeletsR[v])
+            if den == 0:
+                continue
+            for t in gd.treeletsL[v]:
+                ML_data.append(1.0 / den)
+                ML_row.append(node_offset + v)
+                ML_col.append(treelet_offset + t)
+            for t in gd.treeletsH[v]:
+                MH_data.append(1.0 / den)
+                MH_row.append(node_offset + v)
+                MH_col.append(treelet_offset + t)
+            for t in gd.treeletsR[v]:
+                MR_data.append(1.0 / den)
+                MR_row.append(node_offset + v)
+                MR_col.append(treelet_offset + t)
 
         ret = len(node_ranges)
         node_ranges.append( (node_offset, node_offset+len(gd.labels)) )
@@ -614,16 +448,38 @@ def convert(minibatch, device = None):
 
     minibatch = [(f(conj), f(stmt), y) for (conj,stmt,y) in minibatch]
 
+    def arr_f(x):
+        return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.float32))
+    def arr_i(x):
+        return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.int32))
+
+    MI = sparse_matmul.sparse_coo_matrix(
+        arr_f(MI_data), arr_i(MI_row), arr_i(MI_col),
+        shape=(node_offset, edge_offset))
+    MO = sparse_matmul.sparse_coo_matrix(
+        arr_f(MO_data), arr_i(MO_row), arr_i(MO_col),
+        shape=(node_offset, edge_offset))
+
+    ML = sparse_matmul.sparse_coo_matrix(
+        arr_f(ML_data), arr_i(ML_row), arr_i(ML_col),
+        shape=(node_offset, treelet_offset))
+    MH = sparse_matmul.sparse_coo_matrix(
+        arr_f(MH_data), arr_i(MH_row), arr_i(MH_col),
+        shape=(node_offset, treelet_offset))
+    MR = sparse_matmul.sparse_coo_matrix(
+        arr_f(MR_data), arr_i(MR_row), arr_i(MR_col),
+        shape=(node_offset, treelet_offset))
+
     gs = GraphsData(
         node_ranges = node_ranges,
-        labels      = chainer.dataset.convert.to_device(device, np.concatenate(labels)),
-        edges       = chainer.dataset.convert.to_device(device, np.concatenate(edges)),
-        in_edges    = in_edges,
-        out_edges   = out_edges,
-        treelets    = chainer.dataset.convert.to_device(device, np.concatenate(treelets)),
-        treeletsL   = treeletsL,
-        treeletsH   = treeletsH,
-        treeletsR   = treeletsR,
+        labels   = chainer.dataset.convert.to_device(device, np.concatenate(labels)),
+        edges    = chainer.dataset.convert.to_device(device, np.concatenate(edges)),
+        treelets = chainer.dataset.convert.to_device(device, np.concatenate(treelets)),
+        MI = MI,
+        MO = MO,
+        ML = ML,
+        MH = MH,
+        MR = MR,
     )
 
     return (gs, minibatch)
