@@ -1,7 +1,8 @@
 from funcparserlib.lexer import make_tokenizer, Token
-from funcparserlib.parser import (some, maybe, many, skip, forward_decl)
+from funcparserlib.parser import (Parser, some, maybe, many, skip, forward_decl)
 import expr as e
 from expr import EIdent, EQuantified, EApply, Thm, bin_ops
+from typing import Any, List
 
 _tokenizer_specs = [
     ('Space', (r'[ \t\r\n]+',)),
@@ -14,14 +15,14 @@ _tokenizer_specs = [
 _tokenizer_useless = ['Space']
 _tokenizer = make_tokenizer(_tokenizer_specs)
 
-def tokenize(str):
-    """str -> Sequence(Token)"""    
+def tokenize(str: str) -> List[Token]:
     return [x for x in _tokenizer(str) if x.type not in _tokenizer_useless]
 
 
 _binder_names = frozenset(["@", "!", "?!", "?", "\\", "lambda"])
 
-tokval = lambda t: t.value
+def tokval(t: Token) -> Any:
+    return t.value
 
 ident = some(lambda t: t.type=='Ident') >> tokval
 binder = some(lambda t: t.type=='Ident' and t.value in _binder_names) >> tokval
@@ -39,7 +40,7 @@ expr_cont_expr1 = (expr + (((binop + expr + rparen) >> (lambda xs: lambda e1: EA
 
 expr.define((ident >> EIdent) | (lparen + (expr_cont_quantified | expr_cont_expr1)))
 
-def sep_by(p1,p2):
+def sep_by(p1: Parser, p2: Parser) -> Parser:
     return maybe(p1 + many(p2 + p1)) >> (lambda xs: [] if xs is None else [xs[0]] + xs[1])
 
 thm = (sep_by(expr, comma) + skip(some(lambda t: t.type=="Turnstile")) + expr) >> (lambda xs: Thm(xs[0], xs[1]))
