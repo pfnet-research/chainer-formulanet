@@ -42,12 +42,13 @@ Results of our experiment:
 ## Difference from the original paper
 
 There are several differences from original paper.
-They might be the reason for lower accuracy compared to the original paper.
+These difference might be the reason for lower accuracy compared to the original paper.
 
-(1) In the original paper batch normalization is applied within a single graph whereas our implementaion
-    apply batch normalization across multiple graphs.
-(2) Number of constants: we used 2753 unique tokens + three special tokens "VAR", "VARFUNC", "UNKNOWN",
-    whereas the original paper uses only 1906 + 3 tokens.
+1. In the original paper batch normalization is applied within a single graph whereas our implementaion
+   apply batch normalization across multiple graphs.
+2. Number of constants: we used 2753 unique tokens + three special tokens "VAR", "VARFUNC", "UNKNOWN",
+   whereas the original paper uses only 1906 + 3 tokens.
+   We used only limited normalization of tokens, but the original paper might used more normilization.
 
 ## References
 
