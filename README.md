@@ -22,3 +22,6 @@ $ python formulanet_train.py --dataset resullts
 * [1] M. Wang, Y. Tang, J. Wang, and J. Deng, "Premise selection for theorem proving by deep graph embedding," Sep. 2017.
   Available: http://arxiv.org/abs/1709.09994
 
+## License
+
+[MIT License](LICENSE)
