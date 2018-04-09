@@ -1,6 +1,7 @@
 # Chainer implementation of Formulanet
 
-This is an experimental Chainer implementation of FormulaNet [1].
+This is an experimental Chainer implementation of FormulaNet [1], a graph embedding based
+premise selection method for theorem proving.
 
 Disclaimer: PFN provides no warranty or support for this implementation. Use it at your own risk.
 
@@ -21,11 +22,20 @@ $ python formulanet_train.py --dataset results
 
 ## Results
 
-### Validation accuracy with different numbers of update steps on conditional premise selection.
+### Classification accuracy on the test set of our approach versus baseline methods on HolStep
+
+[1, Table 1] + our results:
+
+|  | CNN | CNN-LSTM | Formulanet-basic (orig) | FormulaNet (orig) | Formulanet-basic (ours) | Formulanet (ours) |
+|:-|:---:|:--------:|:-----------------------:|:-----------------:|:-----------------------:|:-----------------:|
+|Unconditional | 83 | 83 | 89.0 | 90.0 | 87.8 | 89.0
+|Conditional   | 82 | 83 | 89.1 | 90.3 | 88.0 | 89.0
+
+### Classification accuracy with different numbers of update steps on conditional premise selection.
 
 Observed accurarcy in our experiment is similar but somewhat lower.
 
-Results reported in the paper ([1], Table 3):
+Results reported in the paper ([1, Table 3]):
 
 |Number of steps  | 0  | 1  | 2  | 3  | 4  |
 |:----------------|:--:|:--:|:--:|:--:|:--:|
