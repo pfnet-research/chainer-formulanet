@@ -26,6 +26,35 @@ VariableOrArray = Union[Variable, Array]
 DIM = 256
 
 
+GraphData = NamedTuple(
+    "GraphData",
+    [("labels", Array),
+     ("edges", Array),
+     ("in_edges", List[Array]),
+     ("out_edges", List[Array]),
+     ("treelets", Array),
+     ("treeletsL", List[Array]),
+     ("treeletsH", List[Array]),
+     ("treeletsR", List[Array]),
+    ]
+)
+
+
+GraphsData = NamedTuple(
+    "GraphsData",
+    [("node_ranges", Array),
+     ("labels", Array),
+     ("edges", Array),
+     ("treelets", Array),
+     ("MI", sparse_matmul.sparse_coo_matrix),
+     ("MO", sparse_matmul.sparse_coo_matrix),
+     ("ML", sparse_matmul.sparse_coo_matrix),
+     ("MH", sparse_matmul.sparse_coo_matrix),
+     ("MR", sparse_matmul.sparse_coo_matrix),
+    ]
+)
+
+
 class FP(chainer.Chain):
     def __init__(self):
         super().__init__()
@@ -365,33 +394,6 @@ class Dataset(dataset.DatasetMixin):
             treeletsR=treeletsR
         )
 
-GraphData = NamedTuple(
-    "GraphData",
-    [("labels", Array),
-     ("edges", Array),
-     ("in_edges", List[Array]),
-     ("out_edges", List[Array]),
-     ("treelets", Array),
-     ("treeletsL", List[Array]),
-     ("treeletsH", List[Array]),
-     ("treeletsR", List[Array]),
-    ]
-)
-
-
-GraphsData = NamedTuple(
-    "GraphsData",
-    [("node_ranges", Array),
-     ("labels", Array),
-     ("edges", Array),
-     ("treelets", Array),
-     ("MI", sparse_matmul.sparse_coo_matrix),
-     ("MO", sparse_matmul.sparse_coo_matrix),
-     ("ML", sparse_matmul.sparse_coo_matrix),
-     ("MH", sparse_matmul.sparse_coo_matrix),
-     ("MR", sparse_matmul.sparse_coo_matrix),
-    ]
-)
 
 def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional[int] = None) -> Tuple[GraphsData, List[Tuple[int,int,bool]]]:
     node_offset = 0
