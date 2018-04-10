@@ -18,7 +18,7 @@ import tree
 try:
     import cupy
     Array = Union[np.ndarray, cupy.ndarray]
-except ModuleNotFoundError:
+except ImportError:
     Array = np.ndarray
 VariableOrArray = Union[Variable, Array]
 
