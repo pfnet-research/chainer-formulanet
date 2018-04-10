@@ -16,11 +16,19 @@ Disclaimer: PFN provides no warranty or support for this implementation. Use it 
 ```
 $ wget http://cl-informatik.uibk.ac.at/cek/holstep/holstep.tgz
 $ tar zxf holstep.tgz
-$ python build_db.py
-$ python formulanet_train.py --dataset results
+$ python build_db.py -o db
+$ python formulanet_train.py --dataset db
 ```
 
+`formulanet_train.py` has several options for configuring models.
+
+* `--conditional`: Use contional model. Default is unconditional model.
+* `--preserve-order`: Use order-preserving model (i.e. *FormulaNet* in the original paper). Default is without order information (i.e. *FormulaNet-basic* in the original paper).
+* `--steps STEPS`: Number of update steps
+
 ## Results
+
+Observed accurarcy in our experiment is similar but somewhat lower compared to the original paper.
 
 ### Classification accuracy on the test set of our approach versus baseline methods on HolStep
 
@@ -32,8 +40,6 @@ $ python formulanet_train.py --dataset results
 |Conditional   | 82 | 83 | 89.1 | 90.3 | 88.0 | 89.0
 
 ### Classification accuracy with different numbers of update steps on conditional premise selection.
-
-Observed accurarcy in our experiment is similar but somewhat lower.
 
 Results reported in the paper ([1, Table 3]):
 
