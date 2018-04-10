@@ -30,12 +30,7 @@ GraphData = NamedTuple(
     "GraphData",
     [("labels", Array),
      ("edges", Array),
-     ("in_edges", List[Array]),
-     ("out_edges", List[Array]),
      ("treelets", Array),
-     ("treeletsL", List[Array]),
-     ("treeletsH", List[Array]),
-     ("treeletsR", List[Array]),
     ]
 )
 
@@ -315,26 +310,15 @@ class Dataset(dataset.DatasetMixin):
         self._len += len(df.examples)
 
     def _set_graph(self, grp: h5py.Group, g: GraphData) -> None:
-        dt_vint = h5py.special_dtype(vlen=np.int32)
         grp.create_dataset("labels", data=g.labels, compression="gzip")
         grp.create_dataset("edges", data=g.edges, compression="gzip")
-        grp.create_dataset("in_edges", data=g.in_edges, dtype=dt_vint, compression="gzip")
-        grp.create_dataset("out_edges", data=g.out_edges, dtype=dt_vint, compression="gzip")
         grp.create_dataset("treelets", data=g.treelets, compression="gzip")
-        grp.create_dataset("treeletsL", data=g.treeletsL, dtype=dt_vint, compression="gzip")
-        grp.create_dataset("treeletsH", data=g.treeletsH, dtype=dt_vint, compression="gzip")
-        grp.create_dataset("treeletsR", data=g.treeletsR, dtype=dt_vint, compression="gzip")
 
     def _get_graph(self, grp: h5py.Group) -> GraphData:
         return GraphData(
             labels=grp["labels"],
             edges=grp["edges"],
-            in_edges=grp["in_edges"],
-            out_edges=grp["out_edges"],
             treelets=grp["treelets"],
-            treeletsL=grp["treeletsL"],
-            treeletsH=grp["treeletsH"],
-            treeletsR=grp["treeletsR"],
         )
 
     def __len__(self) -> int:
@@ -362,36 +346,10 @@ class Dataset(dataset.DatasetMixin):
         tokens = parser_funcparselib.tokenize(text)
         g = tree.tree_to_graph(tree.thm_to_tree(parser_funcparselib.thm.parse(tokens)))
         labels, edges, treelets = g
-        nv = len(labels)
-
-        out_edges_l = [[] for _ in range(nv)] # type: List[List[int]]
-        in_edges_l  = [[] for _ in range(nv)] # type: List[List[int]]
-        for (i,(u,v)) in enumerate(edges):
-            out_edges_l[u].append(i)
-            in_edges_l[v].append(i)
-        out_edges = [np.array(es, dtype=np.int32) for es in out_edges_l]
-        in_edges  = [np.array(es, dtype=np.int32) for es in in_edges_l]
-
-        treeletsL_l = [[] for _ in range(nv)] # type: List[List[int]]
-        treeletsH_l = [[] for _ in range(nv)] # type: List[List[int]]
-        treeletsR_l = [[] for _ in range(nv)] # type: List[List[int]]
-        for (i,(u,v,w)) in enumerate(treelets):
-            treeletsL_l[u].append(i)
-            treeletsH_l[v].append(i)
-            treeletsR_l[w].append(i)
-        treeletsL = [np.array(ts, dtype=np.int32) for ts in treeletsL_l]
-        treeletsH = [np.array(ts, dtype=np.int32) for ts in treeletsH_l]
-        treeletsR = [np.array(ts, dtype=np.int32) for ts in treeletsR_l]
-
         return GraphData(
             labels=np.array([self._symbol_to_id(l) for l in labels], dtype=np.int32),
             edges=np.array(edges, dtype=np.int32),
-            in_edges=in_edges,
-            out_edges=out_edges,
             treelets=np.array(treelets, dtype=np.int32),
-            treeletsL=treeletsL,
-            treeletsH=treeletsH,
-            treeletsR=treeletsR
         )
 
 
@@ -432,32 +390,48 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
 
         labels.append(gd.labels)
 
+        nv = len(gd.labels)
+
+        out_edges = [[] for _ in range(nv)] # type: List[List[int]]
+        in_edges  = [[] for _ in range(nv)] # type: List[List[int]]
+        for (i,(u,v)) in enumerate(gd.edges):
+            out_edges[u].append(i)
+            in_edges[v].append(i)
+
+        treeletsL = [[] for _ in range(nv)] # type: List[List[int]]
+        treeletsH = [[] for _ in range(nv)] # type: List[List[int]]
+        treeletsR = [[] for _ in range(nv)] # type: List[List[int]]
+        for (i,(u,v,w)) in enumerate(gd.treelets):
+            treeletsL[u].append(i)
+            treeletsH[v].append(i)
+            treeletsR[w].append(i)
+
         edges.append(np.array(gd.edges) + node_offset)
         for v in range(len(gd.labels)):
-            den = (len(gd.in_edges[v]) + len(gd.out_edges[v]))
-            for e in gd.in_edges[v]:
+            den = (len(in_edges[v]) + len(out_edges[v]))
+            for e in in_edges[v]:
                 MI_data.append(1.0 / den)
                 MI_row.append(node_offset + v)
                 MI_col.append(edge_offset + e)
-            for e in gd.out_edges[v]:
+            for e in out_edges[v]:
                 MO_data.append(1.0 / den)
                 MO_row.append(node_offset + v)
                 MO_col.append(edge_offset + e)
 
         treelets.append(np.array(gd.treelets) + node_offset)
         for v in range(len(gd.labels)):
-            den = len(gd.treeletsL[v]) + len(gd.treeletsH[v]) + len(gd.treeletsR[v])
+            den = len(treeletsL[v]) + len(treeletsH[v]) + len(treeletsR[v])
             if den == 0:
                 continue
-            for t in gd.treeletsL[v]:
+            for t in treeletsL[v]:
                 ML_data.append(1.0 / den)
                 ML_row.append(node_offset + v)
                 ML_col.append(treelet_offset + t)
-            for t in gd.treeletsH[v]:
+            for t in treeletsH[v]:
                 MH_data.append(1.0 / den)
                 MH_row.append(node_offset + v)
                 MH_col.append(treelet_offset + t)
-            for t in gd.treeletsR[v]:
+            for t in treeletsR[v]:
                 MR_data.append(1.0 / den)
                 MR_row.append(node_offset + v)
                 MR_col.append(treelet_offset + t)
