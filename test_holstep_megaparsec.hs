@@ -1,9 +1,8 @@
-{-# OPTIONS_GHC -Wall #-}
 import Control.Monad
 import qualified Data.ByteString.Char8 as B
 import Text.Megaparsec
 import Text.Printf
-import Holstep
+import HolstepMegaparsec
 
 main :: IO ()
 main = do

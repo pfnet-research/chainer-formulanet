@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Holstep
+module HolstepAttoparsec
   ( Formula (..)
   , DataFile (..)
   , readDataFile
@@ -15,13 +15,14 @@ module Holstep
 
 import Control.Applicative
 import Control.Monad.State.Strict
+import Data.Attoparsec.ByteString.Char8
+import qualified Data.Attoparsec.ByteString.Lazy as AttoparsecLazy
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as BL
 import Data.List
 import Data.Ord
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Text.Megaparsec
 
 data Formula
   = Formula
@@ -42,22 +43,20 @@ data DataFile
 readDataFile :: FilePath -> IO DataFile
 readDataFile name = do
   s <- BL.readFile name
-  case parse dataFileParser name s of
+  case AttoparsecLazy.eitherResult (AttoparsecLazy.parse dataFileParser s) of
     Left e -> error (show e)
     Right x -> return x
 
-type BLParser = Parsec Dec BL.ByteString
-
-dataFileParser :: BLParser DataFile
+dataFileParser :: Parser DataFile
 dataFileParser = DataFile <$> conjParser <*> many depParser <*> many statementParser
 
-conjParser :: BLParser Formula
+conjParser :: Parser Formula
 conjParser = Formula <$> (Just <$> prefixedLine 'N') <*> prefixedLine 'C' <*> prefixedLine 'T'
 
-depParser :: BLParser Formula
+depParser :: Parser Formula
 depParser = Formula <$> (Just <$> prefixedLine 'D') <*> prefixedLine 'A' <*> prefixedLine 'T'
 
-statementParser :: BLParser (Formula, Bool)
+statementParser :: Parser (Formula, Bool)
 statementParser = msum
   [ do s <- prefixedLine '+'
        t <- prefixedLine 'T'
@@ -67,8 +66,8 @@ statementParser = msum
        return (Formula Nothing s t, False)
   ]
 
-prefixedLine :: Char -> BLParser B.ByteString
-prefixedLine c = char c *> space *> (B.pack <$> manyTill anyChar (try newline))
+prefixedLine :: Char -> Parser B.ByteString
+prefixedLine c = char c *> space *> (B.pack <$> manyTill anyChar (try endOfLine))
 
 
 type Ident = B.ByteString
@@ -83,34 +82,32 @@ data Expr
 
 type Thm = ([Expr], Expr)
 
-type BParser = Parsec Dec B.ByteString
+lexme :: Parser a -> Parser a
+lexme p = p <* many space
 
-lexme :: BParser a -> BParser a
-lexme p = p <* space
-
-ident :: BParser Ident
-ident = lexme $ try $ B.pack <$> (p <?> "ident")
+ident :: Parser Ident
+ident = lexme $ try (p <?> "ident")
   where
-    p = some (alphaNumChar <|> oneOf ['#','@','!','^','~','?','$','\'','_','%','+','-','*','<','>','=','/','\\'])
+    p = fmap B.pack (many1 (satisfy (\c -> isAlpha_ascii c || isDigit c || c `elem` ['#','@','!','^','~','?','$','\'','_','%','+','-','*','<','>','=','/','\\'])))
      <|> string ".."
      <|> string ","
 
-lparen :: BParser ()
+lparen :: Parser ()
 lparen = lexme $ char '(' *> pure ()
 
-rparen :: BParser ()
+rparen :: Parser ()
 rparen = lexme $ char ')' *> pure ()
 
-dot :: BParser ()
+dot :: Parser ()
 dot = lexme $ char '.' *> pure ()
 
-expr :: BParser Expr
+expr :: Parser Expr
 expr = msum
   [ EIdent <$> ident
   , do lparen
        msum
          [ do (b,v) <- try $ do
-                b <- lexme $ msum [B.pack <$> string b | b <- ["@", "!", "?!", "?", "\\", "lambda"]]
+                b <- lexme $ msum [string b | b <- ["@", "!", "?!", "?", "\\", "lambda"]]
                 v <- ident
                 dot
                 return (b,v)
@@ -132,7 +129,7 @@ expr = msum
          ]
   ]
 
-thm :: BParser Thm
+thm :: Parser Thm
 thm = (,)
   <$> (expr `sepBy` lexme (char ','))
   <*> (lexme (string "|-") *> expr)

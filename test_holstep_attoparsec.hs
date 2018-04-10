@@ -3,7 +3,7 @@ import Data.Attoparsec.ByteString
 import Control.Monad
 import qualified Data.ByteString.Char8 as B
 import Text.Printf
-import Holstep2
+import HolstepAttoparsec
 
 main :: IO ()
 main = do

@@ -8,7 +8,7 @@ import qualified Data.Set as Set
 import System.IO
 import Text.Megaparsec
 import Text.Printf
-import Holstep
+import HolstepMegaparsec
 
 main :: IO ()
 main = do
