@@ -8,7 +8,7 @@ Disclaimer: PFN provides no warranty or support for this implementation. Use it 
 ## Requirement
 
 * Python 3
-* [Chainer](https://chainer.org/)
+* [Chainer](https://chainer.org/) >= 3.3.0
 * [funcparserlib](https://pypi.python.org/pypi/funcparserlib/)
 
 ## Usage
