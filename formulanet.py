@@ -286,7 +286,7 @@ class Dataset(dataset.DatasetMixin):
         super().__init__()
         self._name_to_id = {name: i for (i, name) in enumerate(names)}
         self._h5f = h5f
-        self._len = int(len(self._h5f["examples_conjecture"]))
+        self._len = int(len(self._h5f["examples_conjecture"])) if "examples_conjecture" in self._h5f else 0            
 
     def init_db(self) -> None:
         self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=h5py.special_dtype(vlen=str), compression="gzip")
