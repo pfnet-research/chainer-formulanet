@@ -70,13 +70,12 @@ class Block(chainer.Chain):
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
 
-    def __call__(self, *args: VariableOrArray):
+    def __call__(self, *args: VariableOrArray) -> Variable:
         assert len(args) == self._n_input
         h = F.relu(self.bn1(self.fc1(F.concat(args))))
         h = F.relu(self.bn2(self.fc2(h)))
         return h
 
-# dirty optimization
 class Block2(chainer.Chain):
     def __init__(self) -> None:
         super().__init__()
@@ -92,7 +91,6 @@ class Block2(chainer.Chain):
         h = F.relu(self.bn2(self.fc2(h)))
         return h
 
-# dirty optimization
 class Block3(chainer.Chain):
     def __init__(self) -> None:
         super().__init__()
@@ -125,7 +123,6 @@ class Step(chainer.Chain):
     def __call__(self, gs: GraphsData, x: VariableOrArray) -> Variable:
         x_new = x
 
-        # dirty optimization
         FI_fc1a_x = self.FI.fc1a(x)
         FI_fc1b_x = self.FI.fc1b(x)
         FO_fc1a_x = self.FO.fc1a(x)
@@ -133,7 +130,6 @@ class Step(chainer.Chain):
         FI_inputs = FI_fc1a_x[gs.edges[:,0]] + FI_fc1b_x[gs.edges[:,1]]
         FO_inputs = FO_fc1a_x[gs.edges[:,0]] + FO_fc1b_x[gs.edges[:,1]]
 
-        # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
         FI_outputs = self.FI(FI_inputs)
         FO_outputs = self.FO(FO_inputs)
 
@@ -143,7 +139,6 @@ class Step(chainer.Chain):
         x_new += d
 
         if self._order_preserving:
-            # dirty optimization
             FL_fc1a_x = self.FL.fc1a(x)
             FL_fc1b_x = self.FL.fc1b(x)
             FL_fc1c_x = self.FL.fc1c(x)
@@ -157,7 +152,6 @@ class Step(chainer.Chain):
             FH_inputs = FH_fc1a_x[gs.treelets[:,0]] + FH_fc1b_x[gs.treelets[:,1]] + FH_fc1c_x[gs.treelets[:,2]]
             FR_inputs = FR_fc1a_x[gs.treelets[:,0]] + FR_fc1b_x[gs.treelets[:,1]] + FR_fc1c_x[gs.treelets[:,2]]
 
-            # 速度とバッチ正規化のサンプル数を増やすために、各頂点単位ではなくまとめて実行する
             FL_outputs = self.FL(FL_inputs)
             FH_outputs = self.FH(FH_inputs)
             FR_outputs = self.FR(FR_inputs)
@@ -189,8 +183,6 @@ class Classifier(chainer.Chain):
 class FormulaNet(chainer.Chain):
     def __init__(self, vocab_size: int, steps: int, order_preserving: bool, conditional: bool) -> None:
         super().__init__()
-        self._vocab_size = vocab_size
-        self._steps = steps
         self._order_preserving = order_preserving
         self._conditional = conditional
 
@@ -199,12 +191,7 @@ class FormulaNet(chainer.Chain):
             self.steps = chainer.ChainList(*[Step(order_preserving) for _ in range(steps)])
             self.classifier = Classifier(conditional)
 
-    def __call__(self, gs: GraphsData, minibatch: VariableOrArray) -> Variable:
-        #import time
-        #from datetime import datetime
-        #start = time.time()
-        #print("__call__ enter: " + str(datetime.now()))
-
+    def __call__(self, gs: GraphsData, minibatch: List[Tuple[int,int,bool]]) -> Variable:
         predicted, loss = self._forward(gs, minibatch)
         self.loss = loss
         reporter.report({'loss': self.loss}, self)
@@ -214,12 +201,9 @@ class FormulaNet(chainer.Chain):
         self.accuracy = F.accuracy(predicted, expected)
         reporter.report({'accuracy': self.accuracy}, self)
 
-        #print("__call__ exit: " + str(datetime.now()))
-        #print("elapsed_time: {0} sec".format(time.time() - start))
-
         return loss
 
-    def _forward(self, gs: GraphsData, minibatch: VariableOrArray) -> Tuple[Array, Array]:
+    def _forward(self, gs: GraphsData, minibatch: List[Tuple[int,int,bool]]) -> Tuple[Variable, Variable]:
         stmt_embeddings = []
         conj_embeddings = []
         labels = []
@@ -235,18 +219,13 @@ class FormulaNet(chainer.Chain):
         x = self._initial_nodes_embedding(gs)
         collect_embedding()
         for (i,step) in enumerate(self.steps):
-            # print("step " + str(i))
             x = step(gs, x)
             collect_embedding()
 
-        stmt_embeddings = F.vstack(stmt_embeddings)
         if self._conditional:
-            conj_embeddings = F.vstack(conj_embeddings)
-
-        if self._conditional:
-            predicted = self.classifier(conj_embeddings, stmt_embeddings)
+            predicted = self.classifier(F.vstack(conj_embeddings), F.vstack(stmt_embeddings))
         else:
-            predicted = self.classifier(stmt_embeddings)
+            predicted = self.classifier(F.vstack(stmt_embeddings))
 
         with chainer.cuda.get_device_from_array(predicted.data):
             labels = self.xp.array(labels, dtype=np.int32)
@@ -281,7 +260,7 @@ class Dataset(dataset.DatasetMixin):
         super().__init__()
         self._name_to_id = {name: i for (i, name) in enumerate(names)}
         self._h5f = h5f
-        self._len = int(len(self._h5f["examples_conjecture"])) if "examples_conjecture" in self._h5f else 0            
+        self._len = int(len(self._h5f["examples_conjecture"])) if "examples_conjecture" in self._h5f else 0
 
     def init_db(self) -> None:
         self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=h5py.special_dtype(vlen=str), compression="gzip")

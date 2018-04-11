@@ -99,7 +99,7 @@ def main():
         # We assume train and test are chainer.datasets.SubDataset.
         train._dataset._h5f = train_h5f
         test._dataset._h5f = test_h5f
-    
+
     train_iter = iterators.SerialIterator(train, args.batchsize)
     test_iter = iterators.SerialIterator(test, args.batchsize, repeat=False, shuffle=False)
 
@@ -123,8 +123,8 @@ def main():
         for i in range(1,len(args.gpus)):
             devices["gpu" + str(i)] = args.gpus[i]
         updater = training.ParallelUpdater(train_iter, optimizer, converter=formulanet.convert, devices=devices)
-    
-    trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=os.path.join(args.out))    
+
+    trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=os.path.join(args.out))
     trainer.extend(extensions.ExponentialShift("lr", rate=1/3.0), trigger=(1, 'epoch'))
 
     evaluator = extensions.Evaluator(test_iter, model, device=args.gpus[0], converter=formulanet.convert)
@@ -151,7 +151,7 @@ def main():
     if args.resume:
         # Resume from a snapshot
         chainer.serializers.load_npz(args.resume, trainer)
-    
+
     trainer.run()
 
     if not args.chainermn or comm.rank == 0:
