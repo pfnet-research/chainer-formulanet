@@ -13,10 +13,17 @@ Disclaimer: PFN provides no warranty or support for this implementation. Use it 
 
 ## Usage
 
+### Dataset preparation
+
 ```
 $ wget http://cl-informatik.uibk.ac.at/cek/holstep/holstep.tgz
 $ tar zxf holstep.tgz
 $ python build_db.py -o db
+```
+
+### Training
+
+```
 $ python formulanet_train.py --dataset db
 ```
 
@@ -25,6 +32,20 @@ $ python formulanet_train.py --dataset db
 * `--conditional`: Use contional model. Default is unconditional model.
 * `--preserve-order`: Use order-preserving model (i.e. *FormulaNet* in the original paper). Default is without order information (i.e. *FormulaNet-basic* in the original paper).
 * `--steps STEPS`: Number of update steps
+
+### Testing
+
+Pretrained model `formulanet-basic-unconditional-3steps.npz` is included in this repository.
+
+```
+$ python formulanet_test.py --model formulanet-basic-unconditional-3steps.npz --dataset db/test.h5 --gpu 0
+...
+accuracy: 0.8891751170158386
+precision: 0.9018562609300268
+recall: 0.8733969290414733
+F beta score: 0.887398477223135
+support: [98015 98015]
+```
 
 ## Results
 
