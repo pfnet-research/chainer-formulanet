@@ -36,8 +36,8 @@ Observed accurarcy in our experiment is similar but somewhat lower compared to t
 
 |  | CNN | CNN-LSTM | Formulanet-basic (orig) | FormulaNet (orig) | Formulanet-basic (ours) | Formulanet (ours) |
 |:-|:---:|:--------:|:-----------------------:|:-----------------:|:-----------------------:|:-----------------:|
-|Unconditional | 83 | 83 | 89.0 | 90.0 | 87.8 | 89.0
-|Conditional   | 82 | 83 | 89.1 | 90.3 | 88.0 | 89.0
+|Unconditional | 83 | 83 | 89.0 | 90.0 | 89.9 | 89.9
+|Conditional   | 82 | 83 | 89.1 | 90.3 | 89.4 | 89.8
 
 ### Classification accuracy with different numbers of update steps on conditional premise selection.
 
@@ -52,8 +52,8 @@ Results of our experiment:
 
 |Number of steps  | 0  | 1  | 2  | 3  | 4  |
 |:----------------|:--:|:--:|:--:|:--:|:--:|
-|FormulaNet-basic |74.2|86.5|88.0|87.8|87.7|
-|FormulaNet       |74.2|88.4|89.2|88.9|88.7|
+|FormulaNet-basic |74.2|87.7|89.1|89.2|89.4|
+|FormulaNet       |74.2|89.0|89.8|89.6|89.8|
 
 ## Difference from the original paper
 
