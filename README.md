@@ -24,7 +24,7 @@ $ python build_db.py -o db
 ### Training
 
 ```
-$ python formulanet_train.py --dataset db
+$ python formulanet_train.py --dataset db --gpus 0
 ```
 
 `formulanet_train.py` has several options for configuring models.
