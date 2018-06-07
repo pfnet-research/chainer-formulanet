@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import List, NamedTuple, Union
+from typing import List, NamedTuple, Optional, Union
 
 Formula = NamedTuple(
     "Formula",
-    [("name", str),
+    [("name", Optional[str]),
      ("text", str),
      ("tokens", str),
      ])
