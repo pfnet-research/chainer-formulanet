@@ -6,7 +6,7 @@ Formula = NamedTuple(
     [("name", str),
      ("text", str),
      ("tokens", str),
-    ])
+     ])
 
 DataFile = NamedTuple(
     "DataFile",
@@ -16,6 +16,7 @@ DataFile = NamedTuple(
      ("labels", List[bool]),
      ])
 
+
 def _readline_with_prefix(f, prefix: str) -> str:
     l = f.readline().strip()
     if not l.startswith(prefix):
@@ -23,7 +24,8 @@ def _readline_with_prefix(f, prefix: str) -> str:
     l = l[len(prefix):]
     return l
 
-def read_file(fname: Union[str,Path]) -> DataFile:
+
+def read_file(fname: Union[str, Path]) -> DataFile:
     with open(str(fname)) as f:
         conj_name = _readline_with_prefix(f, "N ")
         conj_text = _readline_with_prefix(f, "C ")

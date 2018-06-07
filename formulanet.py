@@ -31,7 +31,7 @@ GraphData = NamedTuple(
     [("labels", Array),
      ("edges", Array),
      ("treelets", Array),
-    ]
+     ]
 )
 
 
@@ -46,7 +46,7 @@ GraphsData = NamedTuple(
      ("ML", sparse_matmul.sparse_coo_matrix),
      ("MH", sparse_matmul.sparse_coo_matrix),
      ("MR", sparse_matmul.sparse_coo_matrix),
-    ]
+     ]
 )
 
 
@@ -60,12 +60,13 @@ class FP(chainer.Chain):
     def __call__(self, x: VariableOrArray) -> Variable:
         return F.relu(self.bn(self.fc(x)))
 
+
 class Block(chainer.Chain):
     def __init__(self, n_input: int) -> None:
         super().__init__()
         self._n_input = n_input
         with self.init_scope():
-            self.fc1 = L.Linear(DIM*n_input, DIM)
+            self.fc1 = L.Linear(DIM * n_input, DIM)
             self.fc2 = L.Linear(DIM, DIM)
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
@@ -75,6 +76,7 @@ class Block(chainer.Chain):
         h = F.relu(self.bn1(self.fc1(F.concat(args))))
         h = F.relu(self.bn2(self.fc2(h)))
         return h
+
 
 class Block2(chainer.Chain):
     def __init__(self) -> None:
@@ -91,6 +93,7 @@ class Block2(chainer.Chain):
         h = F.relu(self.bn2(self.fc2(h)))
         return h
 
+
 class Block3(chainer.Chain):
     def __init__(self) -> None:
         super().__init__()
@@ -106,6 +109,7 @@ class Block3(chainer.Chain):
         h = F.relu(self.bn1(arg))
         h = F.relu(self.bn2(self.fc2(h)))
         return h
+
 
 class Step(chainer.Chain):
     def __init__(self, order_preserving: bool) -> None:
@@ -127,8 +131,8 @@ class Step(chainer.Chain):
         FI_fc1b_x = self.FI.fc1b(x)
         FO_fc1a_x = self.FO.fc1a(x)
         FO_fc1b_x = self.FO.fc1b(x)
-        FI_inputs = FI_fc1a_x[gs.edges[:,0]] + FI_fc1b_x[gs.edges[:,1]]
-        FO_inputs = FO_fc1a_x[gs.edges[:,0]] + FO_fc1b_x[gs.edges[:,1]]
+        FI_inputs = FI_fc1a_x[gs.edges[:, 0]] + FI_fc1b_x[gs.edges[:, 1]]
+        FO_inputs = FO_fc1a_x[gs.edges[:, 0]] + FO_fc1b_x[gs.edges[:, 1]]
 
         FI_outputs = self.FI(FI_inputs)
         FO_outputs = self.FO(FO_inputs)
@@ -148,9 +152,9 @@ class Step(chainer.Chain):
             FR_fc1a_x = self.FR.fc1a(x)
             FR_fc1b_x = self.FR.fc1b(x)
             FR_fc1c_x = self.FR.fc1c(x)
-            FL_inputs = FL_fc1a_x[gs.treelets[:,0]] + FL_fc1b_x[gs.treelets[:,1]] + FL_fc1c_x[gs.treelets[:,2]]
-            FH_inputs = FH_fc1a_x[gs.treelets[:,0]] + FH_fc1b_x[gs.treelets[:,1]] + FH_fc1c_x[gs.treelets[:,2]]
-            FR_inputs = FR_fc1a_x[gs.treelets[:,0]] + FR_fc1b_x[gs.treelets[:,1]] + FR_fc1c_x[gs.treelets[:,2]]
+            FL_inputs = FL_fc1a_x[gs.treelets[:, 0]] + FL_fc1b_x[gs.treelets[:, 1]] + FL_fc1c_x[gs.treelets[:, 2]]
+            FH_inputs = FH_fc1a_x[gs.treelets[:, 0]] + FH_fc1b_x[gs.treelets[:, 1]] + FH_fc1c_x[gs.treelets[:, 2]]
+            FR_inputs = FR_fc1a_x[gs.treelets[:, 0]] + FR_fc1b_x[gs.treelets[:, 1]] + FR_fc1c_x[gs.treelets[:, 2]]
 
             FL_outputs = self.FL(FL_inputs)
             FH_outputs = self.FH(FH_inputs)
@@ -164,13 +168,14 @@ class Step(chainer.Chain):
 
         return self.FP(x_new)
 
+
 class Classifier(chainer.Chain):
     def __init__(self, conditional: bool = True) -> None:
         super().__init__()
         self._conditional = conditional
         with self.init_scope():
-            self.fc1 = L.Linear(2*DIM if conditional else DIM, DIM)
-            self.bn  = L.BatchNormalization(DIM)
+            self.fc1 = L.Linear(2 * DIM if conditional else DIM, DIM)
+            self.bn = L.BatchNormalization(DIM)
             self.fc2 = L.Linear(DIM, 2)
 
     def __call__(self, *args: VariableOrArray) -> Variable:
@@ -179,6 +184,7 @@ class Classifier(chainer.Chain):
         else:
             assert len(args) == 1
         return self.fc2(F.relu(self.bn(self.fc1(F.concat(args)))))
+
 
 class FormulaNet(chainer.Chain):
     def __init__(self, vocab_size: int, steps: int, order_preserving: bool, conditional: bool) -> None:
@@ -191,7 +197,7 @@ class FormulaNet(chainer.Chain):
             self.steps = chainer.ChainList(*[Step(order_preserving) for _ in range(steps)])
             self.classifier = Classifier(conditional)
 
-    def __call__(self, gs: GraphsData, minibatch: List[Tuple[int,int,bool]]) -> Variable:
+    def __call__(self, gs: GraphsData, minibatch: List[Tuple[int, int, bool]]) -> Variable:
         predicted, loss = self._forward(gs, minibatch)
         self.loss = loss
         reporter.report({'loss': self.loss}, self)
@@ -203,13 +209,13 @@ class FormulaNet(chainer.Chain):
 
         return loss
 
-    def _forward(self, gs: GraphsData, minibatch: List[Tuple[int,int,bool]]) -> Tuple[Variable, Variable]:
+    def _forward(self, gs: GraphsData, minibatch: List[Tuple[int, int, bool]]) -> Tuple[Variable, Variable]:
         stmt_embeddings = []
         conj_embeddings = []
         labels = []
 
         def collect_embedding() -> None:
-            es = [self._compute_graph_embedding(gs, x, i) for i in range(len(gs.node_ranges))]
+            es = [self._compute_graph_embedding(gs, x, j) for j in range(len(gs.node_ranges))]
             for (conj, stmt, y) in minibatch:
                 stmt_embeddings.append(es[stmt])
                 if self._conditional:
@@ -218,7 +224,7 @@ class FormulaNet(chainer.Chain):
 
         x = self._initial_nodes_embedding(gs)
         collect_embedding()
-        for (i,step) in enumerate(self.steps):
+        for (i, step) in enumerate(self.steps):
             x = step(gs, x)
             collect_embedding()
 
@@ -233,7 +239,7 @@ class FormulaNet(chainer.Chain):
         return predicted[-len(minibatch):], F.softmax_cross_entropy(predicted, labels)
 
     def predict(self, gs: GraphsData, conj: int, stmt: int) -> bool:
-        return (F.argmax(self.logit(gs, conj, stmt)) > 0)
+        return F.argmax(self.logit(gs, conj, stmt)) > 0
 
     def logit(self, gs: GraphsData, conj: int, stmt: int) -> Variable:
         x = self._initial_nodes_embedding(gs)
@@ -251,7 +257,7 @@ class FormulaNet(chainer.Chain):
         return self.embed_id(gs.labels)
 
     def _compute_graph_embedding(self, gs: GraphsData, x: Array, stmt: int) -> Variable:
-        (beg,end) = gs.node_ranges[stmt]
+        (beg, end) = gs.node_ranges[stmt]
         return F.max(x[beg:end], axis=0, keepdims=True)
 
 
@@ -263,7 +269,8 @@ class Dataset(dataset.DatasetMixin):
         self._len = int(len(self._h5f["examples_conjecture"])) if "examples_conjecture" in self._h5f else 0
 
     def init_db(self) -> None:
-        self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=h5py.special_dtype(vlen=str), compression="gzip")
+        self._h5f.create_dataset("examples_conjecture", (0,), maxshape=(None,), dtype=h5py.special_dtype(vlen=str),
+                                 compression="gzip")
         self._h5f.create_dataset("examples_statement", (0,), maxshape=(None,), dtype=np.int32, compression="gzip")
 
     def add_file(self, name: str, fname: Union[Path, str]) -> None:
@@ -276,16 +283,16 @@ class Dataset(dataset.DatasetMixin):
         grp.create_dataset("labels", data=np.array(df.labels, dtype=np.bool), compression="gzip")
 
         grp_statements = grp.create_group("statements")
-        for (i,s) in enumerate(df.examples):
+        for (i, s) in enumerate(df.examples):
             grp_statement = grp_statements.create_group("%05d" % i)
             self._set_graph(grp_statement, self._build_graph(s.text))
 
         n = len(self._h5f["examples_conjecture"])
         self._h5f["examples_conjecture"].resize((n + len(df.examples),))
-        for i in range(n,n+len(df.examples)):
+        for i in range(n, n + len(df.examples)):
             self._h5f["examples_conjecture"][i] = name
-        self._h5f["examples_statement" ].resize((n + len(df.examples),))
-        self._h5f["examples_statement" ][n:] = np.arange(len(df.examples), dtype=np.int32)
+        self._h5f["examples_statement"].resize((n + len(df.examples),))
+        self._h5f["examples_statement"][n:] = np.arange(len(df.examples), dtype=np.int32)
         self._len += len(df.examples)
 
     def _set_graph(self, grp: h5py.Group, g: GraphData) -> None:
@@ -309,8 +316,8 @@ class Dataset(dataset.DatasetMixin):
         grp = self._h5f[name]
         g_conj = self._get_graph(grp["conjecture"])
         g_stmt = self._get_graph(grp["statements"]["%05d" % j])
-        label  = grp["labels"][j]
-        return (g_conj, g_stmt, label)
+        label = grp["labels"][j]
+        return g_conj, g_stmt, label
 
     def _symbol_to_id(self, sym: str) -> int:
         if re.fullmatch(r'_\d+', sym):
@@ -332,13 +339,14 @@ class Dataset(dataset.DatasetMixin):
         )
 
 
-def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional[int] = None) -> Tuple[GraphsData, List[Tuple[int,int,bool]]]:
+def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional[int] = None) -> Tuple[
+    GraphsData, List[Tuple[int, int, bool]]]:
     node_offset = 0
-    node_ranges = [] # type: List[Tuple[int,int]]
+    node_ranges = []  # type: List[Tuple[int,int]]
     edge_offset = 0
     treelet_offset = 0
 
-    table = {} # type: Dict[int,int]
+    table = {}  # type: Dict[int,int]
 
     labels = []
     edges = []
@@ -371,16 +379,16 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
 
         nv = len(gd.labels)
 
-        out_edges = [[] for _ in range(nv)] # type: List[List[int]]
-        in_edges  = [[] for _ in range(nv)] # type: List[List[int]]
-        for (i,(u,v)) in enumerate(gd.edges):
+        out_edges = [[] for _ in range(nv)]  # type: List[List[int]]
+        in_edges = [[] for _ in range(nv)]  # type: List[List[int]]
+        for (i, (u, v)) in enumerate(gd.edges):
             out_edges[u].append(i)
             in_edges[v].append(i)
 
-        treeletsL = [[] for _ in range(nv)] # type: List[List[int]]
-        treeletsH = [[] for _ in range(nv)] # type: List[List[int]]
-        treeletsR = [[] for _ in range(nv)] # type: List[List[int]]
-        for (i,(u,v,w)) in enumerate(gd.treelets):
+        treeletsL = [[] for _ in range(nv)]  # type: List[List[int]]
+        treeletsH = [[] for _ in range(nv)]  # type: List[List[int]]
+        treeletsR = [[] for _ in range(nv)]  # type: List[List[int]]
+        for (i, (u, v, w)) in enumerate(gd.treelets):
             treeletsL[u].append(i)
             treeletsH[v].append(i)
             treeletsR[w].append(i)
@@ -416,7 +424,7 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
                 MR_col.append(treelet_offset + t)
 
         ret = len(node_ranges)
-        node_ranges.append( (node_offset, node_offset+len(gd.labels)) )
+        node_ranges.append((node_offset, node_offset + len(gd.labels)))
 
         node_offset += len(gd.labels)
         edge_offset += len(gd.edges)
@@ -426,10 +434,11 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
 
         return ret
 
-    minibatch2 = [(f(conj), f(stmt), y) for (conj,stmt,y) in minibatch]
+    minibatch2 = [(f(conj), f(stmt), y) for (conj, stmt, y) in minibatch]
 
     def arr_f(x: List[float]) -> Array:
         return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.float32))
+
     def arr_i(x: List[int]) -> Array:
         return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.int32))
 
@@ -451,15 +460,15 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
         shape=(node_offset, treelet_offset))
 
     gs = GraphsData(
-        node_ranges = node_ranges,
-        labels   = chainer.dataset.convert.to_device(device, np.concatenate(labels)),
-        edges    = chainer.dataset.convert.to_device(device, np.concatenate(edges)),
-        treelets = chainer.dataset.convert.to_device(device, np.concatenate(treelets)),
-        MI = MI,
-        MO = MO,
-        ML = ML,
-        MH = MH,
-        MR = MR,
+        node_ranges=node_ranges,
+        labels=chainer.dataset.convert.to_device(device, np.concatenate(labels)),
+        edges=chainer.dataset.convert.to_device(device, np.concatenate(edges)),
+        treelets=chainer.dataset.convert.to_device(device, np.concatenate(treelets)),
+        MI=MI,
+        MO=MO,
+        ML=ML,
+        MH=MH,
+        MR=MR,
     )
 
-    return (gs, minibatch2)
+    return gs, minibatch2

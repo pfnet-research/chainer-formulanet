@@ -1,12 +1,10 @@
 import argparse
-import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import h5py
 
 import formulanet
-import holstep
 import symbols
 
 sys.setrecursionlimit(10000)
@@ -24,7 +22,7 @@ print("converting train data files ..")
 with h5py.File(str(Path(args.out) / "train.h5"), 'w') as h5f:
     ds = formulanet.Dataset(symbols.symbols, h5f)
     ds.init_db()
-    for i in range(1,10000):
+    for i in range(1, 10000):
         fname = Path(args.holstep_dir) / "train" / ("%05d" % i)
         print("loading %s" % fname)
         ds.add_file("%05d" % i, fname)
@@ -33,7 +31,7 @@ print("converting test data files ..")
 with h5py.File(str(Path(args.out) / "test.h5"), 'w') as h5f:
     ds = formulanet.Dataset(symbols.symbols, h5f)
     ds.init_db()
-    for i in range(1,1412):
+    for i in range(1, 1412):
         fname = Path(args.holstep_dir) / "test" / ("%04d" % i)
         print("loading %s" % fname)
         ds.add_file("%04d" % i, fname)

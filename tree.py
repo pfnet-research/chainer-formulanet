@@ -1,24 +1,24 @@
-import collections 
 from typing import Dict, Generic, List, Set, Text, Tuple, TypeVar, Union
 from expr import EIdent, EQuantified, EApply, Expr, Thm
 
 L = TypeVar('L')
 
+
 # We intentionally not use collections.namedtuple because we need node identity.
-#Tree = collections.namedtuple("Tree", ["label", "children"])
+# Tree = collections.namedtuple("Tree", ["label", "children"])
 class Tree(Generic[L]):
     def __init__(self, label: L, children: List["Tree"]) -> None:
         self.label = label
         self.children = children
 
 
-def thm_to_tree(thm: Thm) -> Tree[Union[Text, Tuple[Text,Text]]]:
-    premises   = Tree(",", [expr_to_tree(e) for e in thm.premises])
+def thm_to_tree(thm: Thm) -> Tree[Union[Text, Tuple[Text, Text]]]:
+    premises = Tree(",", [expr_to_tree(e) for e in thm.premises])
     conclusion = expr_to_tree(thm.conclusion)
-    return Tree("|-",  [premises, conclusion])
+    return Tree("|-", [premises, conclusion])
 
 
-def expr_to_tree(e: Expr) -> Tree[Union[Text, Tuple[Text,Text]]]:
+def expr_to_tree(e: Expr) -> Tree[Union[Text, Tuple[Text, Text]]]:
     if isinstance(e, EIdent):
         return Tree(e.name, [])
     elif isinstance(e, EQuantified):
@@ -42,26 +42,29 @@ def expr_to_tree(e: Expr) -> Tree[Union[Text, Tuple[Text,Text]]]:
 
 def collect_labels(t: Tree[L]) -> Set[L]:
     ret = set()
+
     def f(t: Tree):
         ret.add(t.label)
         for ch in t.children:
             f(ch)
+
     f(t)
     return ret
 
 
-def tree_to_graph(t: Tree[Union[Text,Tuple[Text,Text]]]) -> Tuple[List[Text], List[Tuple[int, int]], List[Tuple[int, int, int]]]:
-    nodes = [] # type: List[Text]
-    edges = [] # type: List[Tuple[int, int]]
-    treelets = [] # type: List[Tuple[int, int, int]]
+def tree_to_graph(t: Tree[Union[Text, Tuple[Text, Text]]])\
+        -> Tuple[List[Text], List[Tuple[int, int]], List[Tuple[int, int, int]]]:
+    nodes = []  # type: List[Text]
+    edges = []  # type: List[Tuple[int, int]]
+    treelets = []  # type: List[Tuple[int, int, int]]
 
     def new_node(label: Text) -> int:
-       n = len(nodes)
-       nodes.append(label)
-       return n
+        n = len(nodes)
+        nodes.append(label)
+        return n
 
-    def process(t: Tree[Union[Text,Tuple[Text,Text]]], env: Dict[Text, Tuple[int, int]]) -> int:
-        n_children = [] # type: List[int]
+    def process(t: Tree[Union[Text, Tuple[Text, Text]]], env: Dict[Text, Tuple[int, int]]) -> int:
+        n_children = []  # type: List[int]
 
         if isinstance(t.label, tuple):
             # 変数が実際には使われていなくてもノードを作ってしまっているのは元論文と違うかも
@@ -73,7 +76,7 @@ def tree_to_graph(t: Tree[Union[Text,Tuple[Text,Text]]]) -> Tuple[List[Text], Li
             env2[var] = (n, n_var)
             edges.append((n, process(t.children[0], env2)))
             # 上のfの呼び出しの中で子が追加される可能性があるので、ここで子を集める
-            n_children = [n2 for (n1,n2) in edges if n1 == n]
+            n_children = [n2 for (n1, n2) in edges if n1 == n]
             n_children += process_args(n, t.children[1:], env)
             build_treelets(n, n_children)
             return n
@@ -83,7 +86,7 @@ def tree_to_graph(t: Tree[Union[Text,Tuple[Text,Text]]]) -> Tuple[List[Text], Li
                 return n
             else:
                 n = new_node("VARFUNC")
-                edges.append((binder,n))
+                edges.append((binder, n))
                 n_children = process_args(n, t.children, env)
                 build_treelets(n, n_children)
                 return n
@@ -103,7 +106,7 @@ def tree_to_graph(t: Tree[Union[Text,Tuple[Text,Text]]]) -> Tuple[List[Text], Li
 
     def build_treelets(n: int, n_children: List[int]) -> None:
         for i, n_ch1 in enumerate(n_children):
-            for n_ch2 in n_children[i+1:]:
+            for n_ch2 in n_children[i + 1:]:
                 treelets.append((n_ch1, n, n_ch2))
 
     process(t, {})
@@ -112,9 +115,10 @@ def tree_to_graph(t: Tree[Union[Text,Tuple[Text,Text]]]) -> Tuple[List[Text], Li
 
 if __name__ == '__main__':
     import holstep
-    import parser
+    import parser_funcparselib
+
     df = holstep.read_file("holstep/train/00001")
-    thm = parser.thm.parse(df.conjecture.text)
+    thm = parser_funcparselib.thm.parse(parser_funcparselib.tokenize(df.conjecture.text))
     print(thm)
     t = thm_to_tree(thm)
     print(t)

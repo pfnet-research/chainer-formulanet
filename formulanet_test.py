@@ -2,29 +2,24 @@
 
 # to avoid "_tkinter.TclError: no display name and no $DISPLAY environment variable" error
 import matplotlib as mpl
+
 mpl.use('Agg')
 
 import argparse
 import chainer
 import chainer.functions as F
-import chainer.links as L
 from chainer import iterators
-from chainer import optimizers
-from chainer import reporter
-from chainer import training
-from chainer.training import extensions
 import h5py
 import numpy as np
-import os
 import pandas as pd
 import sys
 from tqdm import tqdm
 
 import formulanet
-import holstep
 import symbols
 
 sys.setrecursionlimit(10000)
+
 
 def main():
     parser = argparse.ArgumentParser(description='chainer formulanet test')
@@ -33,7 +28,7 @@ def main():
                         help='Number of examples in each mini-batch')
     parser.add_argument('--gpu', type=int, default=-1,
                         help='Set GPU device number.'
-                        '(negative value indicates CPU)')
+                             '(negative value indicates CPU)')
     parser.add_argument('--dataset', '-i', default="holstep",
                         help='HDF5 file')
     parser.add_argument('--out', '-o',
@@ -55,12 +50,13 @@ def main():
     print('# steps: {}'.format(args.steps))
     print('')
 
-    test_h5f = h5py.File(args.dataset,  'r')
+    test_h5f = h5py.File(args.dataset, 'r')
     test = formulanet.Dataset(symbols.symbols, test_h5f)
     test_iter = iterators.SerialIterator(test, args.batchsize, repeat=False, shuffle=False)
     print(len(test))
 
-    model = formulanet.FormulaNet(vocab_size=len(symbols.symbols), steps=args.steps, order_preserving=args.preserve_order, conditional=args.conditional)
+    model = formulanet.FormulaNet(vocab_size=len(symbols.symbols), steps=args.steps,
+                                  order_preserving=args.preserve_order, conditional=args.conditional)
     chainer.serializers.load_npz(args.model, model)
     if args.gpu >= 0:
         model.to_gpu()
@@ -81,7 +77,7 @@ def main():
             logits = np.concatenate(logits)
             expected = np.array(expected, dtype=np.int32)
 
-            df = pd.DataFrame({"logits_false": logits[:,0], "logits_true": logits[:,1], "expected": expected})
+            df = pd.DataFrame({"logits_false": logits[:, 0], "logits_true": logits[:, 1], "expected": expected})
             df.to_csv(args.out, index=False)
 
             accuracy = F.accuracy(logits, expected).data
@@ -91,6 +87,7 @@ def main():
             print("recall: {}".format(recall.data[1]))
             print("F beta score: {}".format(F_beta_score.data[1]))
             print("support: {}".format(support.data))
+
 
 if __name__ == '__main__':
     main()
