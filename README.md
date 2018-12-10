@@ -89,8 +89,7 @@ These difference might be the reason for lower accuracy compared to the original
 
 ## References
 
-* [1] M. Wang, Y. Tang, J. Wang, and J. Deng, "Premise selection for theorem proving by deep graph embedding," Sep. 2017.
-  Available: http://arxiv.org/abs/1709.09994
+* [1] M. Wang, Y. Tang, J. Wang, and J. Deng, "Premise selection for theorem proving by deep graph embedding," In Advances in Neural Information Processing Systems 30 (NIPS 2017). Available: https://papers.nips.cc/paper/6871-premise-selection-for-theorem-proving-by-deep-graph-embedding
 
 ## License
 
