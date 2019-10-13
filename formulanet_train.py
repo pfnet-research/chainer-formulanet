@@ -71,7 +71,7 @@ def main():
         args.gpus = [comm.intra_rank]
 
     if args.gpus[0] >= 0:
-        chainer.cuda.get_device(args.gpus[0]).use()
+        chainer.backends.cuda.get_device_from_id(args.gpus[0]).use()
 
     if not args.chainermn:
         print('# GPU: {}'.format(",".join(map(str, args.gpus))))
@@ -114,18 +114,18 @@ def main():
     # We lower the learning rate by 3X after each epoch."
     optimizer = optimizers.RMSprop(lr=0.001)
     optimizer.setup(model)
-    optimizer.add_hook(chainer.optimizer.WeightDecay(10 ** (-4)))
+    optimizer.add_hook(chainer.optimizer_hooks.WeightDecay(10 ** (-4)))
     if args.chainermn:
         optimizer = chainermn.create_multi_node_optimizer(optimizer, comm)
 
     if len(args.gpus) == 1:
-        updater = training.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=args.gpus[0])
+        updater = training.updaters.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=args.gpus[0])
     else:
         devices = {}
         devices["main"] = args.gpus[0]
         for i in range(1, len(args.gpus)):
             devices["gpu" + str(i)] = args.gpus[i]
-        updater = training.ParallelUpdater(train_iter, optimizer, converter=formulanet.convert, devices=devices)
+        updater = training.updaters.ParallelUpdater(train_iter, optimizer, converter=formulanet.convert, devices=devices)
 
     trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=os.path.join(args.out))
     trainer.extend(extensions.ExponentialShift("lr", rate=1 / 3.0), trigger=(1, 'epoch'))

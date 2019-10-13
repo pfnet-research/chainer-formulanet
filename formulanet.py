@@ -51,7 +51,7 @@ class FP(chainer.Chain):
             self.fc = L.Linear(DIM, DIM)
             self.bn = L.BatchNormalization(DIM)
 
-    def __call__(self, x: VariableOrArray) -> Variable:
+    def forward(self, x: VariableOrArray) -> Variable:
         return F.relu(self.bn(self.fc(x)))
 
 
@@ -65,7 +65,7 @@ class Block(chainer.Chain):
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
 
-    def __call__(self, *args: VariableOrArray) -> Variable:
+    def forward(self, *args: VariableOrArray) -> Variable:
         assert len(args) == self._n_input
         h = F.relu(self.bn1(self.fc1(F.concat(args))))
         h = F.relu(self.bn2(self.fc2(h)))
@@ -82,7 +82,7 @@ class Block2(chainer.Chain):
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
 
-    def __call__(self, arg: VariableOrArray) -> Variable:
+    def forward(self, arg: VariableOrArray) -> Variable:
         h = F.relu(self.bn1(arg))
         h = F.relu(self.bn2(self.fc2(h)))
         return h
@@ -99,7 +99,7 @@ class Block3(chainer.Chain):
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
 
-    def __call__(self, arg: VariableOrArray) -> Variable:
+    def forward(self, arg: VariableOrArray) -> Variable:
         h = F.relu(self.bn1(arg))
         h = F.relu(self.bn2(self.fc2(h)))
         return h
@@ -118,7 +118,7 @@ class Step(chainer.Chain):
                 self.FL = Block3()
                 self.FR = Block3()
 
-    def __call__(self, gs: GraphsData, x: VariableOrArray) -> Variable:
+    def forward(self, gs: GraphsData, x: VariableOrArray) -> Variable:
         x_new = x
 
         FI_fc1a_x = self.FI.fc1a(x)
@@ -172,7 +172,7 @@ class Classifier(chainer.Chain):
             self.bn = L.BatchNormalization(DIM)
             self.fc2 = L.Linear(DIM, 2)
 
-    def __call__(self, *args: VariableOrArray) -> Variable:
+    def forward(self, *args: VariableOrArray) -> Variable:
         if self._conditional:
             assert len(args) == 2
         else:
@@ -191,12 +191,12 @@ class FormulaNet(chainer.Chain):
             self.steps = chainer.ChainList(*[Step(order_preserving) for _ in range(steps)])
             self.classifier = Classifier(conditional)
 
-    def __call__(self, gs: GraphsData, minibatch: List[Tuple[int, int, bool]]) -> Variable:
+    def forward(self, gs: GraphsData, minibatch: List[Tuple[int, int, bool]]) -> Variable:
         predicted, loss = self._forward(gs, minibatch)
         self.loss = loss
         reporter.report({'loss': self.loss}, self)
 
-        with chainer.cuda.get_device_from_array(predicted.data):
+        with chainer.cuda.get_device_from_array(predicted.array):
             expected = self.xp.array([1 if y else 0 for (conj, stmt, y) in minibatch], np.int32)
         self.accuracy = F.accuracy(predicted, expected)
         reporter.report({'accuracy': self.accuracy}, self)
@@ -227,7 +227,7 @@ class FormulaNet(chainer.Chain):
         else:
             predicted = self.classifier(F.vstack(stmt_embeddings))
 
-        with chainer.cuda.get_device_from_array(predicted.data):
+        with chainer.cuda.get_device_from_array(predicted.array):
             labels = self.xp.array(labels, dtype=np.int32)
 
         return predicted[-len(minibatch):], F.softmax_cross_entropy(predicted, labels)

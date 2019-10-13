@@ -42,7 +42,7 @@ def main():
     args = parser.parse_args()
 
     if args.gpu >= 0:
-        chainer.cuda.get_device(args.gpu).use()
+        chainer.backends.cuda.get_device_from_id(args.gpu).use()
 
     print('# GPU: {}'.format(args.gpu))
     print('# conditional: {}'.format(args.conditional))
@@ -70,8 +70,8 @@ def main():
                 for batch in test_iter:
                     gs, tuples = formulanet.convert(batch, args.gpu)
                     logits1, _loss = model._forward(gs, tuples)
-                    logits.append(chainer.cuda.to_cpu(logits1.data))
-                    expected.extend(1 if y else 0 for (conj, stmt, y) in tuples)
+                    logits.append(chainer.backends.cuda.to_cpu(logits1.array))
+                    expected.extend(1 if y else 0 for (conj, stmt, y) in tuples)x
                     pbar.update(len(batch))
 
             logits = np.concatenate(logits)
@@ -80,13 +80,13 @@ def main():
             df = pd.DataFrame({"logits_false": logits[:, 0], "logits_true": logits[:, 1], "expected": expected})
             df.to_csv(args.out, index=False)
 
-            accuracy = F.accuracy(logits, expected).data
+            accuracy = F.accuracy(logits, expected).array
             precision, recall, F_beta_score, support = F.classification_summary(logits, expected)
             print("accuracy: {}".format(accuracy))
-            print("precision: {}".format(precision.data[1]))
-            print("recall: {}".format(recall.data[1]))
-            print("F beta score: {}".format(F_beta_score.data[1]))
-            print("support: {}".format(support.data))
+            print("precision: {}".format(precision.array[1]))
+            print("recall: {}".format(recall.array[1]))
+            print("F beta score: {}".format(F_beta_score.array[1]))
+            print("support: {}".format(support.array))
 
 
 if __name__ == '__main__':
