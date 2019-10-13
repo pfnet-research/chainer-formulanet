@@ -3,11 +3,11 @@ from chainer import dataset, Variable
 import chainer.functions as F
 import chainer.links as L
 from chainer import reporter
+from chainer.utils import CooMatrix
 import h5py
 import numpy as np
 from pathlib import Path
 import re
-import sparse_matmul
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import holstep
@@ -37,11 +37,11 @@ class GraphsData(NamedTuple):
     labels: Array
     edges: Array
     treelets: Array
-    MI: sparse_matmul.sparse_coo_matrix
-    MO: sparse_matmul.sparse_coo_matrix
-    ML: sparse_matmul.sparse_coo_matrix
-    MH: sparse_matmul.sparse_coo_matrix
-    MR: sparse_matmul.sparse_coo_matrix
+    MI: CooMatrix
+    MO: CooMatrix
+    ML: CooMatrix
+    MH: CooMatrix
+    MR: CooMatrix
 
 
 class FP(chainer.Chain):
@@ -131,8 +131,8 @@ class Step(chainer.Chain):
         FI_outputs = self.FI(FI_inputs)
         FO_outputs = self.FO(FO_inputs)
 
-        d = sparse_matmul.sparse_matmul(gs.MI, FI_outputs) + \
-            sparse_matmul.sparse_matmul(gs.MO, FO_outputs)
+        d = F.sparse_matmul(gs.MI, FI_outputs) + \
+            F.sparse_matmul(gs.MO, FO_outputs)
 
         x_new += d
 
@@ -154,9 +154,9 @@ class Step(chainer.Chain):
             FH_outputs = self.FH(FH_inputs)
             FR_outputs = self.FR(FR_inputs)
 
-            d = sparse_matmul.sparse_matmul(gs.ML, FL_outputs) + \
-                sparse_matmul.sparse_matmul(gs.MH, FH_outputs) + \
-                sparse_matmul.sparse_matmul(gs.MR, FR_outputs)
+            d = F.sparse_matmul(gs.ML, FL_outputs) + \
+                F.sparse_matmul(gs.MH, FH_outputs) + \
+                F.sparse_matmul(gs.MR, FR_outputs)
 
             x_new += d
 
@@ -436,20 +436,20 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
     def arr_i(x: List[int]) -> Array:
         return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.int32))
 
-    MI = sparse_matmul.sparse_coo_matrix(
+    MI = CooMatrix(
         arr_f(MI_data), arr_i(MI_row), arr_i(MI_col),
         shape=(node_offset, edge_offset))
-    MO = sparse_matmul.sparse_coo_matrix(
+    MO = CooMatrix(
         arr_f(MO_data), arr_i(MO_row), arr_i(MO_col),
         shape=(node_offset, edge_offset))
 
-    ML = sparse_matmul.sparse_coo_matrix(
+    ML = CooMatrix(
         arr_f(ML_data), arr_i(ML_row), arr_i(ML_col),
         shape=(node_offset, treelet_offset))
-    MH = sparse_matmul.sparse_coo_matrix(
+    MH = CooMatrix(
         arr_f(MH_data), arr_i(MH_row), arr_i(MH_col),
         shape=(node_offset, treelet_offset))
-    MR = sparse_matmul.sparse_coo_matrix(
+    MR = CooMatrix(
         arr_f(MR_data), arr_i(MR_row), arr_i(MR_col),
         shape=(node_offset, treelet_offset))
 

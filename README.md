@@ -94,5 +94,3 @@ These difference might be the reason for lower accuracy compared to the original
 ## License
 
 [MIT License](LICENSE)
-
-`sparse_matmul.py` is copied from https://github.com/pfnet-research/chainer-chemistry/pull/90
