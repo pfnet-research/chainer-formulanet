@@ -2,12 +2,12 @@ version: 0
 os: ubuntu==16.04
 features:
 - python==3.6.9
-- chainer==3.3.0
-- cuda==8.0
-- cupy==2.3.0
-- cudnn==5.1
+- chainer==6.4.0
+- cuda==10.0
+- cupy==6.4.0
+- cudnn==7.4
 - pip:funcparserlib==0.3.6
-- pip:matplotlib==2.0.2
+- pip:matplotlib==3.1.1
 - apt:python3-tk # required by matplotlib
 hardware:
 - cpu==2

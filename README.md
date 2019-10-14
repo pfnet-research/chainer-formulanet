@@ -7,8 +7,8 @@ Disclaimer: PFN provides no warranty or support for this implementation. Use it 
 
 ## Requirement
 
-* Python 3
-* [Chainer](https://chainer.org/) >= 3.3.0
+* Python 3.6
+* [Chainer](https://chainer.org/) >= 5.0.0
 * [funcparserlib](https://pypi.python.org/pypi/funcparserlib/)
 
 ## Usage
@@ -94,5 +94,3 @@ These difference might be the reason for lower accuracy compared to the original
 ## License
 
 [MIT License](LICENSE)
-
-`sparse_matmul.py` is copied from https://github.com/pfnet-research/chainer-chemistry/pull/90

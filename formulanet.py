@@ -3,11 +3,11 @@ from chainer import dataset, Variable
 import chainer.functions as F
 import chainer.links as L
 from chainer import reporter
+from chainer.utils import CooMatrix
 import h5py
 import numpy as np
 from pathlib import Path
 import re
-import sparse_matmul
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import holstep
@@ -37,11 +37,11 @@ class GraphsData(NamedTuple):
     labels: Array
     edges: Array
     treelets: Array
-    MI: sparse_matmul.sparse_coo_matrix
-    MO: sparse_matmul.sparse_coo_matrix
-    ML: sparse_matmul.sparse_coo_matrix
-    MH: sparse_matmul.sparse_coo_matrix
-    MR: sparse_matmul.sparse_coo_matrix
+    MI: CooMatrix
+    MO: CooMatrix
+    ML: CooMatrix
+    MH: CooMatrix
+    MR: CooMatrix
 
 
 class FP(chainer.Chain):
@@ -51,7 +51,7 @@ class FP(chainer.Chain):
             self.fc = L.Linear(DIM, DIM)
             self.bn = L.BatchNormalization(DIM)
 
-    def __call__(self, x: VariableOrArray) -> Variable:
+    def forward(self, x: VariableOrArray) -> Variable:
         return F.relu(self.bn(self.fc(x)))
 
 
@@ -65,7 +65,7 @@ class Block(chainer.Chain):
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
 
-    def __call__(self, *args: VariableOrArray) -> Variable:
+    def forward(self, *args: VariableOrArray) -> Variable:
         assert len(args) == self._n_input
         h = F.relu(self.bn1(self.fc1(F.concat(args))))
         h = F.relu(self.bn2(self.fc2(h)))
@@ -82,7 +82,7 @@ class Block2(chainer.Chain):
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
 
-    def __call__(self, arg: VariableOrArray) -> Variable:
+    def forward(self, arg: VariableOrArray) -> Variable:
         h = F.relu(self.bn1(arg))
         h = F.relu(self.bn2(self.fc2(h)))
         return h
@@ -99,7 +99,7 @@ class Block3(chainer.Chain):
             self.bn1 = L.BatchNormalization(DIM)
             self.bn2 = L.BatchNormalization(DIM)
 
-    def __call__(self, arg: VariableOrArray) -> Variable:
+    def forward(self, arg: VariableOrArray) -> Variable:
         h = F.relu(self.bn1(arg))
         h = F.relu(self.bn2(self.fc2(h)))
         return h
@@ -118,7 +118,7 @@ class Step(chainer.Chain):
                 self.FL = Block3()
                 self.FR = Block3()
 
-    def __call__(self, gs: GraphsData, x: VariableOrArray) -> Variable:
+    def forward(self, gs: GraphsData, x: VariableOrArray) -> Variable:
         x_new = x
 
         FI_fc1a_x = self.FI.fc1a(x)
@@ -131,8 +131,8 @@ class Step(chainer.Chain):
         FI_outputs = self.FI(FI_inputs)
         FO_outputs = self.FO(FO_inputs)
 
-        d = sparse_matmul.sparse_matmul(gs.MI, FI_outputs) + \
-            sparse_matmul.sparse_matmul(gs.MO, FO_outputs)
+        d = F.sparse_matmul(gs.MI, FI_outputs) + \
+            F.sparse_matmul(gs.MO, FO_outputs)
 
         x_new += d
 
@@ -154,9 +154,9 @@ class Step(chainer.Chain):
             FH_outputs = self.FH(FH_inputs)
             FR_outputs = self.FR(FR_inputs)
 
-            d = sparse_matmul.sparse_matmul(gs.ML, FL_outputs) + \
-                sparse_matmul.sparse_matmul(gs.MH, FH_outputs) + \
-                sparse_matmul.sparse_matmul(gs.MR, FR_outputs)
+            d = F.sparse_matmul(gs.ML, FL_outputs) + \
+                F.sparse_matmul(gs.MH, FH_outputs) + \
+                F.sparse_matmul(gs.MR, FR_outputs)
 
             x_new += d
 
@@ -172,7 +172,7 @@ class Classifier(chainer.Chain):
             self.bn = L.BatchNormalization(DIM)
             self.fc2 = L.Linear(DIM, 2)
 
-    def __call__(self, *args: VariableOrArray) -> Variable:
+    def forward(self, *args: VariableOrArray) -> Variable:
         if self._conditional:
             assert len(args) == 2
         else:
@@ -191,12 +191,12 @@ class FormulaNet(chainer.Chain):
             self.steps = chainer.ChainList(*[Step(order_preserving) for _ in range(steps)])
             self.classifier = Classifier(conditional)
 
-    def __call__(self, gs: GraphsData, minibatch: List[Tuple[int, int, bool]]) -> Variable:
+    def forward(self, gs: GraphsData, minibatch: List[Tuple[int, int, bool]]) -> Variable:
         predicted, loss = self._forward(gs, minibatch)
         self.loss = loss
         reporter.report({'loss': self.loss}, self)
 
-        with chainer.cuda.get_device_from_array(predicted.data):
+        with chainer.cuda.get_device_from_array(predicted.array):
             expected = self.xp.array([1 if y else 0 for (conj, stmt, y) in minibatch], np.int32)
         self.accuracy = F.accuracy(predicted, expected)
         reporter.report({'accuracy': self.accuracy}, self)
@@ -227,7 +227,7 @@ class FormulaNet(chainer.Chain):
         else:
             predicted = self.classifier(F.vstack(stmt_embeddings))
 
-        with chainer.cuda.get_device_from_array(predicted.data):
+        with chainer.cuda.get_device_from_array(predicted.array):
             labels = self.xp.array(labels, dtype=np.int32)
 
         return predicted[-len(minibatch):], F.softmax_cross_entropy(predicted, labels)
@@ -436,20 +436,20 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
     def arr_i(x: List[int]) -> Array:
         return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.int32))
 
-    MI = sparse_matmul.sparse_coo_matrix(
+    MI = CooMatrix(
         arr_f(MI_data), arr_i(MI_row), arr_i(MI_col),
         shape=(node_offset, edge_offset))
-    MO = sparse_matmul.sparse_coo_matrix(
+    MO = CooMatrix(
         arr_f(MO_data), arr_i(MO_row), arr_i(MO_col),
         shape=(node_offset, edge_offset))
 
-    ML = sparse_matmul.sparse_coo_matrix(
+    ML = CooMatrix(
         arr_f(ML_data), arr_i(ML_row), arr_i(ML_col),
         shape=(node_offset, treelet_offset))
-    MH = sparse_matmul.sparse_coo_matrix(
+    MH = CooMatrix(
         arr_f(MH_data), arr_i(MH_row), arr_i(MH_col),
         shape=(node_offset, treelet_offset))
-    MR = sparse_matmul.sparse_coo_matrix(
+    MR = CooMatrix(
         arr_f(MR_data), arr_i(MR_row), arr_i(MR_col),
         shape=(node_offset, treelet_offset))
 
