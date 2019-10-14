@@ -112,7 +112,10 @@ def main():
 
     # "We train our networks using RMSProp [47] with 0.001 learning rate and 1 × 10−4 weight decay.
     # We lower the learning rate by 3X after each epoch."
-    optimizer = optimizers.RMSprop(lr=0.001)
+    if chainer.get_dtype() == np.float16:
+        optimizer = optimizers.RMSprop(lr=0.001, eps=1e-07)
+    else:
+        optimizer = optimizers.RMSprop(lr=0.001)
     optimizer.setup(model)
     optimizer.add_hook(chainer.optimizer_hooks.WeightDecay(10 ** (-4)))
     if args.chainermn:

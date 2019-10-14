@@ -431,7 +431,7 @@ def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional
     minibatch2 = [(f(conj), f(stmt), y) for (conj, stmt, y) in minibatch]
 
     def arr_f(x: List[float]) -> Array:
-        return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.float32))
+        return chainer.dataset.convert.to_device(device, np.array(x, dtype=chainer.get_dtype()))
 
     def arr_i(x: List[int]) -> Array:
         return chainer.dataset.convert.to_device(device, np.array(x, dtype=np.int32))
