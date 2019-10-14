@@ -25,29 +25,23 @@ VariableOrArray = Union[Variable, Array]
 
 DIM = 256
 
-
-GraphData = NamedTuple(
-    "GraphData",
-    [("labels", Array),
-     ("edges", Array),
-     ("treelets", Array),
-     ]
-)
+    
+class GraphData(NamedTuple):
+    labels: Array
+    edges: Array
+    treelets: Array
 
 
-GraphsData = NamedTuple(
-    "GraphsData",
-    [("node_ranges", Array),
-     ("labels", Array),
-     ("edges", Array),
-     ("treelets", Array),
-     ("MI", sparse_matmul.sparse_coo_matrix),
-     ("MO", sparse_matmul.sparse_coo_matrix),
-     ("ML", sparse_matmul.sparse_coo_matrix),
-     ("MH", sparse_matmul.sparse_coo_matrix),
-     ("MR", sparse_matmul.sparse_coo_matrix),
-     ]
-)
+class GraphsData(NamedTuple):
+    node_ranges: Array
+    labels: Array
+    edges: Array
+    treelets: Array
+    MI: sparse_matmul.sparse_coo_matrix
+    MO: sparse_matmul.sparse_coo_matrix
+    ML: sparse_matmul.sparse_coo_matrix
+    MH: sparse_matmul.sparse_coo_matrix
+    MR: sparse_matmul.sparse_coo_matrix
 
 
 class FP(chainer.Chain):

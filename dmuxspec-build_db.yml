@@ -1,7 +1,7 @@
 version: 0
 os: ubuntu==16.04
 features:
-- python==3
+- python==3.6.9
 - chainer==3.3.0
 - pip:funcparserlib==0.3.6
 hardware:

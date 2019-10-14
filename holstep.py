@@ -1,20 +1,16 @@
 from pathlib import Path
 from typing import List, NamedTuple, Optional, Union
 
-Formula = NamedTuple(
-    "Formula",
-    [("name", Optional[str]),
-     ("text", str),
-     ("tokens", str),
-     ])
+class Formula(NamedTuple):
+    name: Optional[str]
+    text: str
+    tokens: str
 
-DataFile = NamedTuple(
-    "DataFile",
-    [("conjecture", Formula),
-     ("dependencies", List[Formula]),
-     ("examples", List[Formula]),
-     ("labels", List[bool]),
-     ])
+class DataFile(NamedTuple):
+    conjecture: Formula
+    dependencies: List[Formula]
+    examples: List[Formula]
+    labels: List[bool]
 
 
 def _readline_with_prefix(f, prefix: str) -> str:
