@@ -71,7 +71,7 @@ def main():
                     gs, tuples = formulanet.convert(batch, args.gpu)
                     logits1, _loss = model._forward(gs, tuples)
                     logits.append(chainer.backends.cuda.to_cpu(logits1.array))
-                    expected.extend(1 if y else 0 for (conj, stmt, y) in tuples)x
+                    expected.extend(1 if y else 0 for (conj, stmt, y) in tuples)
                     pbar.update(len(batch))
 
             logits = np.concatenate(logits)
