@@ -4,7 +4,7 @@ features:
 - python==3.6.9
 - custom:chainer-with-chainerx
 - cuda==10.0
-- cupy==6.4.0
+- cupy==7.0.0b4
 - cudnn==7.4
 - nccl==2.3.7
 - openmpi==3.0
@@ -27,8 +27,8 @@ datasets:
 snapshot_dir: /home/user/snapshots
 custom_defs:
   chainer-with-chainerx:
-    provides: chainer==6.4.0
-    commands: CHAINER_BUILD_CHAINERX=1 CHAINERX_BUILD_CUDA=1 CUDNN_ROOT_DIR=/usr/include pip3 install -U chainer==6.4.0
+    provides: chainer==7.0.0b4
+    commands: CHAINER_BUILD_CHAINERX=1 CHAINERX_BUILD_CUDA=1 CUDNN_ROOT_DIR=/usr/include pip3 install --pre -U chainer==7.0.0b4
     dependencies:
     - python==3.6.9
     - cuda==10.0
