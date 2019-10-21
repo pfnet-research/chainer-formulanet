@@ -2,9 +2,9 @@ version: 0
 os: ubuntu==16.04
 features:
 - python==3.6.9
-- chainer==6.4.0
+- custom:chainer-with-chainerx
 - cuda==10.0
-- cupy==6.4.0
+- cupy==7.0.0b4
 - cudnn==7.4
 - pip:funcparserlib==0.3.6
 - pip:matplotlib==3.1.1
@@ -15,4 +15,20 @@ hardware:
 - ram==8192
 - disk==20000
 datasets:
+# When you access to h5 files, you may need to set environmental
+# variable HDF5_USE_FILE_LOCKING=FALSE to avoid the error "OSError:
+# Unable to open file (unable to lock file, errno = 11, error message
+# = 'Resource temporarily unavailable')".
 - formulanet-holstep-hdf5==1 @ /home/user/holstep
+custom_defs:
+  chainer-with-chainerx:
+    provides: chainer==7.0.0b4
+    commands: CHAINER_BUILD_CHAINERX=1 CHAINERX_BUILD_CUDA=1 CUDNN_ROOT_DIR=/usr/include pip3 install --pre -U chainer==7.0.0b4
+    dependencies:
+    - python==3.6.9
+    - cuda==10.0
+    - cudnn==7.4
+    - pip:h5py==2.6.0
+    - apt:cmake
+    - apt:libblas3
+    - apt:libblas-dev

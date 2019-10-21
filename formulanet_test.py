@@ -26,9 +26,11 @@ def main():
 
     parser.add_argument('--batchsize', '-b', type=int, default=32,
                         help='Number of examples in each mini-batch')
-    parser.add_argument('--gpu', type=int, default=-1,
-                        help='Set GPU device number.'
-                             '(negative value indicates CPU)')
+    parser.add_argument('--device', type=str, default="-1",
+                        help='Device specifier. Either ChainerX device '
+                        'specifier or an integer. If non-negative integer, '
+                        'CuPy arrays with specified device id are used. If '
+                        'negative integer, NumPy arrays are used')
     parser.add_argument('--dataset', '-i', default="holstep",
                         help='HDF5 file')
     parser.add_argument('--out', '-o',
@@ -41,8 +43,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.gpu >= 0:
-        chainer.backends.cuda.get_device_from_id(args.gpu).use()
+    device = chainer.get_device(args.device)
 
     print('# GPU: {}'.format(args.gpu))
     print('# conditional: {}'.format(args.conditional))
@@ -58,8 +59,7 @@ def main():
     model = formulanet.FormulaNet(vocab_size=len(symbols.symbols), steps=args.steps,
                                   order_preserving=args.preserve_order, conditional=args.conditional)
     chainer.serializers.load_npz(args.model, model)
-    if args.gpu >= 0:
-        model.to_gpu()
+    model.to_device(device)
 
     with chainer.using_config('train', False):
         with chainer.using_config('enable_backprop', False):
@@ -68,7 +68,7 @@ def main():
 
             with tqdm(total=len(test)) as pbar:
                 for batch in test_iter:
-                    gs, tuples = formulanet.convert(batch, args.gpu)
+                    gs, tuples = formulanet.convert(batch, device)
                     logits1, _loss = model._forward(gs, tuples)
                     logits.append(chainer.backends.cuda.to_cpu(logits1.array))
                     expected.extend(1 if y else 0 for (conj, stmt, y) in tuples)

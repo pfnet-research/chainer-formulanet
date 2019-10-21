@@ -333,7 +333,8 @@ class Dataset(dataset.DatasetMixin):
         )
 
 
-def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional[int] = None) -> Tuple[
+@chainer.dataset.converter()
+def convert(minibatch: List[Tuple[GraphData, GraphData, bool]], device: Optional[chainer.backend.Device]) -> Tuple[
     GraphsData, List[Tuple[int, int, bool]]]:
     node_offset = 0
     node_ranges = []  # type: List[Tuple[int,int]]

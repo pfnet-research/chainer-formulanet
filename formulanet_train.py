@@ -34,9 +34,12 @@ def main():
                         help='Number of examples in each mini-batch')
     parser.add_argument('--epoch', '-e', type=int, default=5,
                         help='Number of sweeps over the dataset to train')
-    parser.add_argument('--gpus', type=str, default='-1',
-                        help='Set GPU device numbers with comma saparated. '
-                             '(empty indicates CPU)')
+    parser.add_argument('--devices', type=str, default='',
+                        help='Comma-separated list of devices specifier. '
+                        'Either ChainerX device  specifier or an integer. '
+                        'If non-negative integer, CuPy arrays with specified '
+                        'device id are used. If negative integer, NumPy '
+                        'arrays are used')
     parser.add_argument('--dataset', '-i', default="holstep",
                         help='Directory of holstep repository')
     parser.add_argument('--out', '-o', default='results',
@@ -59,7 +62,6 @@ def main():
                         help='Path for chainermn.create_multi_node_checkpointer')
 
     args = parser.parse_args()
-    args.gpus = list(map(int, args.gpus.split(',')))
 
     if args.chainermn:
         # matplotlib.font_manager should be imported before mpi4py.MPI
@@ -68,13 +70,14 @@ def main():
         import chainermn
         from chainermn.extensions import create_multi_node_checkpointer
         comm = chainermn.create_communicator()
-        args.gpus = [comm.intra_rank]
+        devices = [chainer.get_device("@cupy:" + str(comm.intra_rank))]
+    else:
+        devices = list(map(chainer.get_device, args.devices.split(',')))
+        if len(devices) == 0:
+            devices = [chainer.get_device(-1)]
+        print('# Devices: {}'.format(",".join(map(str, devices))))
+    devices[0].use()
 
-    if args.gpus[0] >= 0:
-        chainer.backends.cuda.get_device_from_id(args.gpus[0]).use()
-
-    if not args.chainermn:
-        print('# GPU: {}'.format(",".join(map(str, args.gpus))))
     if not args.chainermn or comm.rank == 0:
         print('# epoch: {}'.format(args.epoch))
         print('# conditional: {}'.format(args.conditional))
@@ -107,8 +110,8 @@ def main():
 
     model = formulanet.FormulaNet(vocab_size=len(symbols.symbols), steps=args.steps,
                                   order_preserving=args.preserve_order, conditional=args.conditional)
-    if len(args.gpus) == 1 and args.gpus[0] >= 0:
-        model.to_gpu()
+    if len(devices) == 1:
+        model.to_device(devices[0])
 
     # "We train our networks using RMSProp [47] with 0.001 learning rate and 1 × 10−4 weight decay.
     # We lower the learning rate by 3X after each epoch."
@@ -121,19 +124,19 @@ def main():
     if args.chainermn:
         optimizer = chainermn.create_multi_node_optimizer(optimizer, comm)
 
-    if len(args.gpus) == 1:
-        updater = training.updaters.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=args.gpus[0])
+    if len(devices) == 1:
+        updater = training.updaters.StandardUpdater(train_iter, optimizer, converter=formulanet.convert, device=devices[0])
     else:
-        devices = {}
-        devices["main"] = args.gpus[0]
-        for i in range(1, len(args.gpus)):
-            devices["gpu" + str(i)] = args.gpus[i]
-        updater = training.updaters.ParallelUpdater(train_iter, optimizer, converter=formulanet.convert, devices=devices)
+        devices_dict = {}
+        devices_dict["main"] = devices[0]
+        for i in range(1, len(devices)):
+            devices_dict["device" + str(i)] = devices[i]
+        updater = training.updaters.ParallelUpdater(train_iter, optimizer, converter=formulanet.convert, devices=devices_dict)
 
     trainer = training.Trainer(updater, (args.epoch, 'epoch'), out=os.path.join(args.out))
     trainer.extend(extensions.ExponentialShift("lr", rate=1 / 3.0), trigger=(1, 'epoch'))
 
-    evaluator = extensions.Evaluator(test_iter, model, device=args.gpus[0], converter=formulanet.convert)
+    evaluator = extensions.Evaluator(test_iter, model, device=devices[0], converter=formulanet.convert)
     if args.chainermn:
         evaluator = chainermn.create_multi_node_evaluator(evaluator, comm)
     trainer.extend(evaluator)
