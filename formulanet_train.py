@@ -46,6 +46,9 @@ def main():
                         help='Directory to output the result')
     parser.add_argument('--resume', '-r', default='',
                         help='Resume the training from snapshot')
+    parser.add_argument('--autoload', action='store_true',
+                        help='Automatically load trainer snapshots in case'
+                        ' of preemption or other temporary system failure')
     #    parser.add_argument('--seed', type=int, default=0,
     #                        help='Random seed')
     #    parser.add_argument('--snapshot_interval', type=int, default=10000,
@@ -151,15 +154,13 @@ def main():
         trainer.extend(extensions.PlotReport(['main/accuracy', 'validation/main/accuracy'], x_key='epoch',
                                              file_name='accuracy.png'))
         trainer.extend(extensions.ProgressBar(update_interval=10))
-        trainer.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
         trainer.extend(extensions.snapshot_object(model, filename='model_epoch-{.updater.epoch}'))
 
+    snapshot = extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}', autoload=args.autoload)
     if args.chainermn:
-        checkpointer = create_multi_node_checkpointer(args.run_id, comm, path=args.checkpointer_path)
-        checkpointer.maybe_load(trainer, optimizer)
-        print("Rank", comm.rank, ": (Re)Starting from (epoch, iter) =",
-              (trainer.updater.epoch, trainer.updater.iteration))
-        trainer.extend(checkpointer, trigger=(100, 'iteration'))
+        replica_sets = [[0], range(1, comm.size)]
+        snapshot = chainermn.extensions.multi_node_snapshot(comm, snapshot, replica_sets)
+    trainer.extend(snapshot, trigger=(1, 'epoch'))
 
     if args.resume:
         # Resume from a snapshot
