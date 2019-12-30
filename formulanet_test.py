@@ -45,7 +45,7 @@ def main():
 
     device = chainer.get_device(args.device)
 
-    print('# GPU: {}'.format(args.gpu))
+    print('# Device: {}'.format(str(device)))
     print('# conditional: {}'.format(args.conditional))
     print('# order_preserving: {}'.format(args.preserve_order))
     print('# steps: {}'.format(args.steps))

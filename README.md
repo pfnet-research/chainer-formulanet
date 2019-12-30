@@ -8,7 +8,7 @@ Disclaimer: PFN provides no warranty or support for this implementation. Use it 
 ## Requirement
 
 * Python 3.6
-* [Chainer](https://chainer.org/) >= 5.0.0
+* [Chainer](https://chainer.org/) >= 7.0.0
 * [funcparserlib](https://pypi.python.org/pypi/funcparserlib/)
 
 ## Usage
@@ -24,7 +24,7 @@ $ python build_db.py -o db
 ### Training
 
 ```
-$ python formulanet_train.py --dataset db --gpus 0
+$ python formulanet_train.py --dataset db --devices @cupy:0
 ```
 
 `formulanet_train.py` has several options for configuring models.
