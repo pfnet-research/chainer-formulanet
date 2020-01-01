@@ -1,0 +1,4 @@
+chainer >=7.0.0
+funcparserlib >=0.3.6
+h5py >=2.6.0
+matplotlib >=3.1.1
