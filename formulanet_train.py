@@ -59,11 +59,6 @@ def main():
     parser.add_argument('--preserve-order', action='store_true', help='Use order-preserving model')
     parser.add_argument('--steps', type=int, default="3", help='Number of update steps')
 
-    parser.add_argument('--run-id', type=str, default="formulanet_train",
-                        help='ID of the task name')
-    parser.add_argument('--checkpointer-path', type=str, default=None,
-                        help='Path for chainermn.create_multi_node_checkpointer')
-
     args = parser.parse_args()
 
     if args.chainermn:
@@ -71,7 +66,6 @@ def main():
         # to avoid MPI issue with fork() system call.
         import matplotlib.font_manager
         import chainermn
-        from chainermn.extensions import create_multi_node_checkpointer
         comm = chainermn.create_communicator()
         devices = [chainer.get_device("@cupy:" + str(comm.intra_rank))]
     else:
