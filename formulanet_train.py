@@ -75,9 +75,10 @@ def main():
         comm = chainermn.create_communicator()
         devices = [chainer.get_device("@cupy:" + str(comm.intra_rank))]
     else:
-        devices = list(map(chainer.get_device, args.devices.split(',')))
-        if len(devices) == 0:
+        if args.devices == '':
             devices = [chainer.get_device(-1)]
+        else:
+            devices = list(map(chainer.get_device, args.devices.split(',')))
         print('# Devices: {}'.format(",".join(map(str, devices))))
     devices[0].use()
 
