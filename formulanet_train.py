@@ -151,11 +151,11 @@ def main():
         trainer.extend(extensions.ProgressBar(update_interval=10))
         trainer.extend(extensions.snapshot_object(model, filename='model_epoch-{.updater.epoch}'))
 
-    snapshot = extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}', autoload=args.autoload)
+    snapshot = extensions.snapshot(filename='snapshot_{.updater.iteration}', n_retains=2, autoload=args.autoload)
     if args.chainermn:
         replica_sets = [[0], range(1, comm.size)]
         snapshot = chainermn.extensions.multi_node_snapshot(comm, snapshot, replica_sets)
-    trainer.extend(snapshot, trigger=(1, 'epoch'))
+    trainer.extend(snapshot, trigger=(100, 'iteration'))
 
     if args.resume:
         # Resume from a snapshot
