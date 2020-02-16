@@ -38,7 +38,7 @@ $ python formulanet_train.py --dataset db --devices @cupy:0
 Pretrained model `formulanet-basic-unconditional-3steps.npz` is included in this repository.
 
 ```
-$ python formulanet_test.py --model formulanet-basic-unconditional-3steps.npz --dataset db/test.h5 --gpu 0
+$ python formulanet_test.py --model formulanet-basic-unconditional-3steps.npz --dataset db/test.h5 --device @cupy:0
 ...
 accuracy: 0.8891751170158386
 precision: 0.9018562609300268
